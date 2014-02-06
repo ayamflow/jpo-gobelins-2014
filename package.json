@@ -11,6 +11,7 @@
     "url": "https://github.com/ayamflow/Experiment-Boilerplate/issues"
   },
   "devDependencies": {
-    "grunt-contrib-connect": "~0.5.0"
+    "grunt-contrib-connect": "~0.5.0",
+    "leapjs": "~0.3.0"
   }
 }
