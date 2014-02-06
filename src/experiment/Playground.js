@@ -41,7 +41,7 @@ Playground.prototype = {
         loader.load('assets/models/model_clean.obj', function (object) {
             this.mesh = object.children[0];
             this.lines = object.clone().children[0];
-            this.scene.add(this.mesh);
+            // this.scene.add(this.mesh);
             this.scene.add(this.lines);
             this.mesh.material.transparent = true;
             this.lines.material = new THREE.MeshLambertMaterial({color: 0xFFFF00, wireframe: true, wireframeLinewidth: 2});
