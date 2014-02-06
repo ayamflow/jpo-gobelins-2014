@@ -108,7 +108,7 @@ Playground.prototype = {
         this.leapLightHelper.add(leapCube1);
         this.leapLightHelper.add(leapCube2);
         this.leapLightHelper.position = this.leapLight.position;
-<<<<<<< HEAD
+
         this.scene.add(this.leapLightHelper);
 
         // Living light
@@ -158,14 +158,12 @@ Playground.prototype = {
         var helperOne = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
         helperOne.position = this.livingLight.lightTwo.position;
         this.scene.add(helperOne);
-=======
 
         this.hand = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF00FF}));
         // this.sphere = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0x0FF00}));
         // this.hand.position = this.leapLight.position;
         this.scene.add(this.hand);
         // this.scene.add(this.sphere);
->>>>>>> bcb552ae739f017c18e92844fbdcd17e10e38ab3
     },
 
     customRender: function() {
