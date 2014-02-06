@@ -55,8 +55,6 @@ Playground.prototype = {
         this.composer.addPass(this.filmPass);
 
         this.filmPass.renderToScreen = true;
-
-
     },
 
     initMeshes: function() {
@@ -111,6 +109,54 @@ Playground.prototype = {
         this.leapLightHelper.add(leapCube2);
         this.leapLightHelper.position = this.leapLight.position;
         this.scene.add(this.leapLightHelper);
+
+        // Living light
+        this.livingLight = {
+            origin: null,
+            lightOne: null,
+            lightTwo: null,
+            speed: 0,
+
+            init: function(){
+                this.origin   = new THREE.Vector3(-0, -0, -500);
+                this.lightOne = new THREE.PointLight(0x0000FF, 10, 500);
+                this.lightTwo = new THREE.PointLight(0x00FF00, 10, 500);
+            },
+
+            update: function(){
+                this.speed += 0.1;
+
+                var PI2 = Math.PI * 2;
+                var radius = 50;
+
+                var positionOne = {
+                    x: this.origin.x + Math.cos(this.speed) * radius + 25,
+                    y: this.origin.y + Math.sin(this.speed) * radius*.5,
+                    z: this.origin.y + Math.sin(this.speed) * radius + 25
+                };
+
+                var positionTwo = {
+                    x: this.origin.x + Math.cos(this.speed + Math.PI) * radius + 25,
+                    y: this.origin.y + Math.sin(this.speed + Math.PI) * radius*.5,
+                    z: this.origin.y + Math.sin(this.speed + Math.PI) * radius + 25
+                };
+
+                this.lightOne.position.set(positionOne.x, positionOne.y, positionOne.z);
+                this.lightTwo.position.set(positionTwo.x, positionTwo.y, positionTwo.z);
+            }
+        };
+
+        this.livingLight.init();
+        this.scene.add(this.livingLight.lightOne);
+        this.scene.add(this.livingLight.lightTwo);
+
+        var helperTwo = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
+        helperTwo.position = this.livingLight.lightOne.position;
+        this.scene.add(helperTwo);
+
+        var helperOne = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
+        helperOne.position = this.livingLight.lightTwo.position;
+        this.scene.add(helperOne);
     },
 
     customRender: function() {
@@ -134,11 +180,16 @@ Playground.prototype = {
         this.customRender();
 
         this.composer.render(0.01);
+        this.livingLight.update();
         // this.renderer.render(this.scene, this.camera);
         // this.renderer.clear();
         // this.composer.render();
 
-        requestAnimationFrame(this.render.bind(this));
+
+        setTimeout(function(){
+            window.requestAnimationFrame(this.render.bind(this));
+        }.bind(this), 1000 / 30);
+        // requestAnimationFrame(this.render.bind(this));
     },
 
     debug: function() {
