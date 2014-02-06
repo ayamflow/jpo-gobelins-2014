@@ -25,5 +25,16 @@ var Constants = {
         x: -730,
         y: 60,
         z: -6500
+    },
+    backgroundPosition: {
+        x: -600,
+        y: 200,
+        z: -9000
+    },
+    lightIntensity: {
+        back: 10,
+        mid: 10,
+        front: 10,
+        leap: 10
     }
 };
