@@ -47,7 +47,7 @@ Playground.prototype = {
         this.renderPass = new THREE.RenderPass(this.scene, this.camera);
 
         // Noise pass
-        this.filmPass   = new THREE.FilmPass( 1, 0, 0, false );
+        this.filmPass   = new THREE.FilmPass( 1, 0, 0, false);
 
         // Effect Composer
         this.composer   = new THREE.EffectComposer( this.renderer, new THREE.WebGLRenderTarget( window.innerWidth, window.innerWidth, rtParams ) );
@@ -63,7 +63,7 @@ Playground.prototype = {
             this.mesh = object.children[0];
             this.lines = object.clone().children[0];
             this.scene.add(this.mesh);
-            this.scene.add(this.lines);
+            // this.scene.add(this.lines);
             this.mesh.material.transparent = true;
             this.lines.material = new THREE.MeshLambertMaterial({color: 0x0000FF, wireframe: true, wireframeLinewidth: 4});
 
@@ -100,7 +100,7 @@ Playground.prototype = {
         this.scene.add(this.leapLight);
 
         this.leapLightHelper = new THREE.Object3D();
-        this.scene.add(this.leapLightHelper);
+        // this.scene.add(this.leapLightHelper);
         var leapCube1 = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
         var leapCube2 = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
         leapCube2.rotation.x = Math.cos(10);
@@ -108,6 +108,7 @@ Playground.prototype = {
         this.leapLightHelper.add(leapCube1);
         this.leapLightHelper.add(leapCube2);
         this.leapLightHelper.position = this.leapLight.position;
+<<<<<<< HEAD
         this.scene.add(this.leapLightHelper);
 
         // Living light
@@ -157,17 +158,50 @@ Playground.prototype = {
         var helperOne = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
         helperOne.position = this.livingLight.lightTwo.position;
         this.scene.add(helperOne);
+=======
+
+        this.hand = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF00FF}));
+        // this.sphere = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0x0FF00}));
+        // this.hand.position = this.leapLight.position;
+        this.scene.add(this.hand);
+        // this.scene.add(this.sphere);
+>>>>>>> bcb552ae739f017c18e92844fbdcd17e10e38ab3
     },
 
     customRender: function() {
         var time = Date.now() * 0.001;
 
-        // this.ambientLight.color.setHSV(Math.cos(time) * 10, 0.5, 0.5);
         // this.mesh.material.opacity = (Math.sin(time) + 1) / 2;
 
         this.leapLightHelper.rotation.x += Math.cos(time) / 10;
         this.leapLightHelper.rotation.y += Math.sin(time) / 10;
         this.leapLight.position.set(this.leap.hands[0].x, this.leap.hands[0].y, -2500 + this.leap.hands[0].z * 10);
+
+
+        if(!this.leap.hands[0].valid) {
+            if(this.fading) return;
+            this.fading = true;
+            this.midLight.intensity = 0;//-= this.midLight.intensity / 100;
+            this.backLight.intensity = 0;//-= this.backLight.intensity / 100;
+            this.frontLight.intensity = 0;//-= this.frontLight.intensity / 100;
+            this.fading = false;
+        }
+        else {
+            this.midLight.intensity = 1000;//+= (1000 - this.midLight.intensity) / 100;
+            this.backLight.intensity = 1000;//+= (1000 - this.backLight.intensity) / 100;
+            this.frontLight.intensity = 1000;//+= (1000 - this.frontLight.intensity) / 100;
+        }
+
+        /*var dy = this.leapLight.position.y - this.leap.hands[0].sphereCenter[1];
+        var ratio = (dy + 50) / 100;
+
+        console.log(dy.toFixed(2), ratio.toFixed(2));
+
+        this.leapLight.intensity = ratio;
+        // console.log(this.leapLight.intensity);
+        if(isNaN(this.leapLight.intensity)) {
+            this.leapLight.intensity = 100;
+        }*/
     },
 
     render: function()

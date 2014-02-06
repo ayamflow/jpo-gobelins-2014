@@ -27,7 +27,10 @@ var LeapBridge = function(fingersNumber, handsNumber, x, y, fingerRadius) {
             z: x / y,
             ox: x,
             oy: y,
-            oz: x / y
+            oz: x / y,
+            sphereCenter: [],
+            sphereRadius: 0,
+            valid: false
         };
     }
 
@@ -80,11 +83,17 @@ LeapBridge.prototype =  {
         var hand;
         for(i = 0; i < this.handsNumber; i++) {
             hand = event.hands[i];
-            if(!hand) return;
+            if(!hand) {
+                this.hands[i].valid = false;
+                return;
+            }
 
             this.hands[i].x = hand.stabilizedPalmPosition[0];
             this.hands[i].y = hand.stabilizedPalmPosition[1];
             this.hands[i].z = hand.stabilizedPalmPosition[2];
+            this.hands[i].sphereCenter = hand.sphereCenter;
+            this.hands[i].sphereRadius = hand.sphereRadius;
+            this.hands[i].valid = true;
         }
     }
 };
