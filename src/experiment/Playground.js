@@ -33,8 +33,30 @@ Playground.prototype = {
         this.camera.position = Constants.cameraPosition;
 
         this.renderer.setSize(this.resize.screenWidth, this.resize.screenHeight);
-
         document.body.appendChild(this.renderer.domElement);
+
+        ////
+        var rtParams = {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBFormat,
+            stencilBuffer: true
+        };
+
+        // Render pass
+        this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+
+        // Noise pass
+        this.filmPass   = new THREE.FilmPass( 1, 0, 0, false );
+
+        // Effect Composer
+        this.composer   = new THREE.EffectComposer( this.renderer, new THREE.WebGLRenderTarget( window.innerWidth, window.innerWidth, rtParams ) );
+        this.composer.addPass(this.renderPass);
+        this.composer.addPass(this.filmPass);
+
+        this.filmPass.renderToScreen = true;
+
+
     },
 
     initMeshes: function() {
@@ -111,7 +133,8 @@ Playground.prototype = {
 
         this.customRender();
 
-        this.renderer.render(this.scene, this.camera);
+        this.composer.render(0.01);
+        // this.renderer.render(this.scene, this.camera);
         // this.renderer.clear();
         // this.composer.render();
 
