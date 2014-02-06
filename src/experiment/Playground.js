@@ -1,3 +1,5 @@
+var Constants = Constants || {};
+
 var Playground = function()
 {
     this.isDebug = true;
@@ -9,7 +11,6 @@ var Playground = function()
     // Kick it !
     this.init();
     this.initGui();
-    this.render();
 };
 
 Playground.prototype = {
@@ -18,17 +19,17 @@ Playground.prototype = {
         this.initRenderer();
         this.initMeshes();
         this.initLights();
-        this.controls = new THREE.TrackballControls(this.camera, this.renderer.domElement);
+        // this.controls = new THREE.TrackballControls(this.camera, this.renderer.domElement);
     },
 
     initRenderer: function() {
         this.resize = new Resize();
-        this.renderer = new THREE.WebGLRenderer();
-        this.camera = new THREE.PerspectiveCamera(45, this.resize.screenWidth / this.resize.screenHeight, 0.1, 10000);
+        this.renderer = new THREE.WebGLRenderer({antialias: true});
+        this.camera = new THREE.PerspectiveCamera(30, this.resize.screenWidth / this.resize.screenHeight, 100, 10000);
         this.scene = new THREE.Scene();
 
         this.scene.add(this.camera);
-        this.camera.position.z = 500;
+        this.camera.position = Constants.cameraPosition;
 
         this.renderer.setSize(this.resize.screenWidth, this.resize.screenHeight);
 
@@ -37,41 +38,49 @@ Playground.prototype = {
 
     initMeshes: function() {
         var loader = new THREE.OBJLoader();
-        loader.load('assets/models/model.obj', function (object) {
-            // console.log('loaded', object);
-            this.scene.add(object);
+        loader.load('assets/models/model_clean.obj', function (object) {
+            this.mesh = object.children[0];
+            this.lines = object.clone().children[0];
+            this.scene.add(this.mesh);
+            this.scene.add(this.lines);
+            this.mesh.material.transparent = true;
+            this.lines.material = new THREE.MeshLambertMaterial({color: 0xFFFF00, wireframe: true, wireframeLinewidth: 2});
+
+            this.render();
         }.bind(this));
     },
 
     initLights: function() {
-        this.spotLight = new THREE.SpotLight(0x230099, 10, 100000);
-        this.spotLight.castShadow = true;
-        this.spotLight.position.x = 500;
-        this.scene.add(this.spotLight);
-
-        this.spotLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0x2899EB}));
-        this.spotLightHelper.position = this.spotLight.position;
-        this.scene.add(this.spotLightHelper);
-
-        this.moonLight = new THREE.SpotLight(0xFF0000, 10, 100000);
-        this.moonLight.castShadow = true;
-        this.moonLight.position.x = 500;
-        this.scene.add(this.moonLight);
-
-        this.moonLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF0000}));
-        this.moonLightHelper.position = this.moonLight.position;
-        this.scene.add(this.moonLightHelper);
-
-        this.ambientLight = new THREE.AmbientLight(0x111144);
+        this.ambientLight = new THREE.AmbientLight(0x1E1E1E);
         this.scene.add(this.ambientLight);
+
+        this.frontLight = new THREE.PointLight(0xCC1834, 10, 1000);
+        this.frontLight.position.set(Constants.frontLightPosition.x, Constants.frontLightPosition.y, Constants.frontLightPosition.z);
+        this.scene.add(this.frontLight);
+        this.frontLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xCC1834}));
+        this.frontLightHelper.position = this.frontLight.position;
+        this.scene.add(this.frontLightHelper);
+
+        this.midLight = new THREE.PointLight(0x3418CC, 10, 1000);
+        this.midLight.position.set(Constants.midLightPosition.x, Constants.midLightPosition.y, Constants.midLightPosition.z);
+        this.scene.add(this.midLight);
+        this.midLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0x3418CC}));
+        this.midLightHelper.position = this.midLight.position;
+        this.scene.add(this.midLightHelper);
+
+        this.backLight = new THREE.PointLight(0xFF8800, 1, 1000);
+        this.backLight.position.set(Constants.backLightPosition.x, Constants.backLightPosition.y, Constants.backLightPosition.z);
+        this.scene.add(this.backLight);
+        this.backLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
+        this.backLightHelper.position = this.backLight.position;
+        this.scene.add(this.backLightHelper);
     },
 
     customRender: function() {
         var time = Date.now() * 0.001;
 
-        // this.moonLight.position.set(150 * Math.sin(time / 4 + Math.PI), 150, 150 * Math.cos(time / 4 + Math.PI));
-        this.moonLightHelper.position = this.moonLight.position;
-        this.spotLightHelper.position = this.spotLight.position;
+        // this.ambientLight.intensity = Math.cos(time) * 10;
+        this.mesh.material.opacity = (Math.sin(time) + 1) / 2;
     },
 
     render: function()
@@ -81,7 +90,7 @@ Playground.prototype = {
             this.stats.update();
         }
 
-        this.controls.update();
+        // this.controls.update();
 
         this.customRender();
 
@@ -104,26 +113,59 @@ Playground.prototype = {
     initGui: function() {
         this.gui = new dat.GUI();
 
-        var light1 = this.gui.addFolder('light1');
-        light1.add(Constants.light1Position, 'x').min(-1000).max(1000).onChange(function() {
-            this.moonLight.position.x = Constants.light1Position.x;
+        var cameraPosition = this.gui.addFolder('cameraPosition');
+        cameraPosition.add(Constants.cameraPosition, 'x').min(-200).max(200).onChange(function() {
+            this.camera.position.x = Constants.cameraPosition.x;
         }.bind(this));
-        light1.add(Constants.light1Position, 'y').min(-1000).max(1000).onChange(function() {
-            this.moonLight.position.y = Constants.light1Position.y;
+        cameraPosition.add(Constants.cameraPosition, 'y').min(-200).max(200).onChange(function() {
+            this.camera.position.y = Constants.cameraPosition.y;
         }.bind(this));
-        light1.add(Constants.light1Position, 'z').min(-1000).max(1000).onChange(function() {
-            this.moonLight.position.z = Constants.light1Position.z;
+        cameraPosition.add(Constants.cameraPosition, 'z').min(-200).max(200).onChange(function() {
+            this.camera.position.z = Constants.cameraPosition.z;
         }.bind(this));
 
-        var light2 = this.gui.addFolder('light2');
-        light2.add(Constants.light2Position, 'x').min(-1000).max(1000).onChange(function() {
-            this.spotLight.position.x = Constants.light2Position.x;
+        var cameraRotation = this.gui.addFolder('cameraRotation');
+        cameraRotation.add(Constants.cameraRotation, 'x').min(-Math.PI).max(Math.PI).step(Math.PI / 20).onChange(function() {
+            this.camera.rotation.x = Constants.cameraRotation.x;
         }.bind(this));
-        light2.add(Constants.light2Position, 'y').min(-1000).max(1000).onChange(function() {
-            this.spotLight.position.y = Constants.light2Position.y;
+        cameraRotation.add(Constants.cameraRotation, 'y').min(-Math.PI).max(Math.PI).step(Math.PI / 20).onChange(function() {
+            this.camera.rotation.y = Constants.cameraRotation.y;
         }.bind(this));
-        light2.add(Constants.light2Position, 'z').min(-1000).max(1000).onChange(function() {
-            this.spotLight.position.z = Constants.light2Position.z;
+        cameraRotation.add(Constants.cameraRotation, 'z').min(-Math.PI).max(Math.PI).step(Math.PI / 20).onChange(function() {
+            this.camera.rotation.z = Constants.cameraRotation.z;
+        }.bind(this));
+
+        var frontLight = this.gui.addFolder('frontLightPosition');
+        frontLight.add(Constants.frontLightPosition, 'x').min(-1000).max(1000).onChange(function() {
+            this.frontLight.position.x = Constants.frontLightPosition.x;
+        }.bind(this));
+        frontLight.add(Constants.frontLightPosition, 'y').min(-1000).max(5000).onChange(function() {
+            this.frontLight.position.y = Constants.frontLightPosition.y;
+        }.bind(this));
+        frontLight.add(Constants.frontLightPosition, 'z').min(-1000).max(1000).onChange(function() {
+            this.frontLight.position.z = Constants.frontLightPosition.z;
+        }.bind(this));
+
+        var midLight = this.gui.addFolder('midLightPosition');
+        midLight.add(Constants.midLightPosition, 'x').min(-1000).max(1000).onChange(function() {
+            this.midLight.position.x = Constants.midLightPosition.x;
+        }.bind(this));
+        midLight.add(Constants.midLightPosition, 'y').min(-1000).max(5000).onChange(function() {
+            this.midLight.position.y = Constants.midLightPosition.y;
+        }.bind(this));
+        midLight.add(Constants.midLightPosition, 'z').min(-6000).max(0).onChange(function() {
+            this.midLight.position.z = Constants.midLightPosition.z;
+        }.bind(this));
+
+        var backLight = this.gui.addFolder('backLightPosition');
+        backLight.add(Constants.backLightPosition, 'x').min(-1000).max(1000).onChange(function() {
+            this.backLight.position.x = Constants.backLightPosition.x;
+        }.bind(this));
+        backLight.add(Constants.backLightPosition, 'y').min(-1000).max(5000).onChange(function() {
+            this.backLight.position.y = Constants.backLightPosition.y;
+        }.bind(this));
+        backLight.add(Constants.backLightPosition, 'z').min(-20000).max(0).onChange(function() {
+            this.backLight.position.z = Constants.backLightPosition.z;
         }.bind(this));
     }
 };
