@@ -1,4 +1,6 @@
 var Constants = {
+    showMesh: true,
+    showLines: true,
     cameraPosition: {
         x: 0,
         y: 7,
