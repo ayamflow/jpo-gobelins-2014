@@ -3,8 +3,8 @@ var Constants = {
     showLines: false,
     cameraPosition: {
         x: 0,
-        y: 7,
-        z: 1220
+        y: 6,
+        z: 0
     },
     cameraRotation: {
         x: 0,

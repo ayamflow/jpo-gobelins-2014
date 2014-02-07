@@ -2,7 +2,7 @@ var Constants = Constants || {};
 
 var Playground = function()
 {
-    this.isDebug = true;
+    this.isDebug = false;
     if(this.isDebug)
     {
         this.debug();
@@ -28,7 +28,7 @@ Playground.prototype = {
           autoplay: false,
           volume: 0.3
         });
-        /*this.ambiant = new Howl({
+        this.ambiant = new Howl({
             urls: ['assets/sounds/ambient.mp3'],
             autoplay: true,
             loop: true
@@ -38,7 +38,7 @@ Playground.prototype = {
             autoplay: true,
             loop: true,
             volume: 0.6
-        });*/
+        });
     },
 
     initRenderer: function() {
@@ -79,9 +79,12 @@ Playground.prototype = {
 
     initMeshes: function() {
         // Background
-        this.background = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshLambertMaterial({color: 0xE65F39})); // MeshBasicMaterial to make it really visible
-        this.scene.add(this.background);
-        this.background.position = Constants.backgroundPosition;
+        // this.background = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshBasicMaterial({color: 0xE65F39})); // MeshBasicMaterial to make it really visible
+        this.movingPlane = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshLambertMaterial({color: 0xE65F39}));
+        // this.scene.add(this.background);
+        this.scene.add(this.movingPlane);
+        // this.background.position.set(Constants.backgroundPosition.x, Constants.backgroundPosition.y, Constants.backgroundPosition.z)
+        this.movingPlane.position = Constants.backgroundPosition;
 
         var loader = new THREE.OBJLoader();
         loader.load('assets/models/model_clean.obj', function (object) {
@@ -104,9 +107,16 @@ Playground.prototype = {
             this.mesh.geometry.mergeVertices();
 
             this.render();
-            TweenLite.fromTo(this.background.position, 6, {z: -200}, {z: -9000, yoyo: true, repeat: -1, delay: 1.2});
-            TweenLite.fromTo(this.bgLight.position, 6, {z: -150}, {z: -9000 + 50, yoyo: true, repeat: -1, delay: 1.2});
+            this.movePlane();
         }.bind(this));
+    },
+
+    movePlane: function() {
+        TweenLite.fromTo(this.movingPlane.position, 6, {z: -200}, {z: -9000, yoyo: true, repeat: -1, delay: 1.2});
+        TweenLite.fromTo(this.bgLight.position, 6, {z: -150}, {z: -9000 + 50, yoyo: true, repeat: -1, delay: 1.2});
+        if(!this.lightsOn) {
+            setTimeout(this.movePlane.bind(this), 8000);
+        }
     },
 
     initLights: function() {
@@ -114,7 +124,7 @@ Playground.prototype = {
         this.scene.add(this.ambientLight);
 
         this.bgLight = new THREE.PointLight(0xE65F39, 120, 1000);
-        this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
+        // this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
         this.scene.add(this.bgLight);
 
         this.frontLight = new THREE.PointLight(0xCC1834, Constants.lightIntensity.front, 1000);
@@ -122,23 +132,23 @@ Playground.prototype = {
         this.scene.add(this.frontLight);
         this.frontLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xCC1834}));
         this.frontLightHelper.position = this.frontLight.position;
-        this.scene.add(this.frontLightHelper);
+        // this.scene.add(this.frontLightHelper);
 
         this.midLight = new THREE.PointLight(0x3418CC, Constants.lightIntensity.mid, 1000);
         this.midLight.position = Constants.midLightPosition;
         this.scene.add(this.midLight);
         this.midLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0x3418CC}));
         this.midLightHelper.position = this.midLight.position;
-        this.scene.add(this.midLightHelper);
+        // this.scene.add(this.midLightHelper);
 
         this.backLight = new THREE.PointLight(0xFF8800, Constants.lightIntensity.back, 1000);
         this.backLight.position = Constants.backLightPosition;
         this.scene.add(this.backLight);
         this.backLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
         this.backLightHelper.position = this.backLight.position;
-        this.scene.add(this.backLightHelper);
+        // this.scene.add(this.backLightHelper);
 
-        this.leapLight = new THREE.PointLight(0xFF8800, Constants.lightIntensity.leap, 1000);
+        this.leapLight = new THREE.PointLight(0x0080FF, Constants.lightIntensity.leap, 1000);
         this.scene.add(this.leapLight);
 
         this.leapLightHelper = new THREE.Object3D();
@@ -229,7 +239,7 @@ Playground.prototype = {
 
         // Light fading control
         this.lightsOn = true;
-        this.fading = true;
+        this.fading = false;
         this.fadeLightsOut(0);
     },
 
@@ -293,6 +303,7 @@ Playground.prototype = {
 
     fadeLightsIn: function(time) {
         if(this.fading || this.lightsOn) return;
+        // console.log('fadeLightsIn');
         this.switchSound.play();
         time = time || 0.5;
         this.fading = true;
@@ -309,6 +320,7 @@ Playground.prototype = {
 
     fadeLightsOut: function(time) {
         if(this.fading || !this.lightsOn) return;
+        // console.log('fadeLightsOut');
         this.switchSound.play();
         time = time || 0.5;
         this.fading = true;
