@@ -4,7 +4,7 @@ var Constants = {
     cameraPosition: {
         x: 0,
         y: 7,
-        z: 0
+        z: 1220
     },
     cameraRotation: {
         x: 0,

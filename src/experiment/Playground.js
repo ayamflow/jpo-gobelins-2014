@@ -47,7 +47,7 @@ Playground.prototype = {
         this.renderPass = new THREE.RenderPass(this.scene, this.camera);
 
         // Noise pass
-        this.filmPass   = new THREE.FilmPass( 1, 0, 0, false);
+        this.filmPass   = new THREE.FilmPass( 0.02, 0, 0, false);
 
         // Effect Composer
         this.composer   = new THREE.EffectComposer( this.renderer, new THREE.WebGLRenderTarget( window.innerWidth, window.innerWidth, rtParams ) );
@@ -112,52 +112,79 @@ Playground.prototype = {
         this.scene.add(this.leapLightHelper);
 
         // Living light
-        this.livingLight = {
+        var self = this;
+        this.lightController = {
             origin: null,
-            lightOne: null,
-            lightTwo: null,
-            speed: 0,
+            lights: [],
+            drawObject: null,
 
-            init: function(){
-                this.origin   = new THREE.Vector3(-0, -0, -500);
-                this.lightOne = new THREE.PointLight(0x0000FF, 10, 500);
-                this.lightTwo = new THREE.PointLight(0x00FF00, 10, 500);
+            initWithLights: function(number){
+                this.drawObject = new THREE.Object3D();
+                this.origin = new THREE.Vector3(0, 0, -500);
+
+
+                for (var i = 0; i < number; i++) {
+                    var light    = new THREE.PointLight(0xFF8800, 10, 500);
+                    light.helper = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
+                    light.helper.receiveShadow = false;
+                    light.helper.castShadow = false;
+                    light.glow   = this.glow();
+                    light.delta  = new THREE.Vector3();
+                    light.startAngle = Math.random() * Math.PI * 2;
+
+                    light.randomSpeed = function(){
+                        light.speed = new THREE.Vector3(
+                            Math.random()*0.1,
+                            Math.random()*0.1,
+                            Math.random()*0.1
+                        );
+                    };
+
+                    light.randomSpeed();
+                    setInterval(function(){
+                        light.randomSpeed();
+                    }.bind(light), 3000);
+
+                    this.lights.push(light);
+
+                    this.drawObject.add(light);
+                    this.drawObject.add(light.helper);
+                    this.drawObject.add(light.glow);
+                }
+            },
+
+            glow: function() {
+                var shader = THREE.GlowShader(self.camera.position, new THREE.Color(0xFF8800));
+                var glow = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), shader.clone());
+                glow.scale.multiplyScalar(1.5);
+                glow.receiveShadow = false;
+                glow.castShadow = false;
+                return glow;
             },
 
             update: function(){
-                this.speed += 0.1;
 
                 var PI2 = Math.PI * 2;
-                var radius = 50;
+                var radius = 500;
 
-                var positionOne = {
-                    x: this.origin.x + Math.cos(this.speed) * radius + 25,
-                    y: this.origin.y + Math.sin(this.speed) * radius*.5,
-                    z: this.origin.y + Math.sin(this.speed) * radius + 25
-                };
+                for (var i = 0; i < this.lights.length; i++) {
+                    this.lights[i].delta.add(this.lights[i].speed);
 
-                var positionTwo = {
-                    x: this.origin.x + Math.cos(this.speed + Math.PI) * radius + 25,
-                    y: this.origin.y + Math.sin(this.speed + Math.PI) * radius*.5,
-                    z: this.origin.y + Math.sin(this.speed + Math.PI) * radius + 25
-                };
+                    var position = new THREE.Vector3(
+                        this.origin.x + Math.cos(this.lights[i].delta.x + this.lights[i].startAngle) * radius + 25,
+                        this.origin.y + Math.sin(this.lights[i].delta.y + this.lights[i].startAngle) * radius *.5,
+                        this.origin.y + Math.sin(this.lights[i].delta.z + this.lights[i].startAngle) * radius + 25
+                    );
 
-                this.lightOne.position.set(positionOne.x, positionOne.y, positionOne.z);
-                this.lightTwo.position.set(positionTwo.x, positionTwo.y, positionTwo.z);
-            }
+                    this.lights[i].position        = position;
+                    this.lights[i].helper.position = position;
+                    this.lights[i].glow.position = position;
+                }
+            },
         };
 
-        this.livingLight.init();
-        this.scene.add(this.livingLight.lightOne);
-        this.scene.add(this.livingLight.lightTwo);
-
-        var helperTwo = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
-        helperTwo.position = this.livingLight.lightOne.position;
-        this.scene.add(helperTwo);
-
-        var helperOne = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
-        helperOne.position = this.livingLight.lightTwo.position;
-        this.scene.add(helperOne);
+        this.lightController.initWithLights(2);
+        this.scene.add(this.lightController.drawObject);
 
         this.hand = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF00FF}));
         // this.sphere = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0x0FF00}));
@@ -212,7 +239,7 @@ Playground.prototype = {
         this.customRender();
 
         this.composer.render(0.01);
-        this.livingLight.update();
+        this.lightController.update();
         // this.renderer.render(this.scene, this.camera);
         // this.renderer.clear();
         // this.composer.render();
