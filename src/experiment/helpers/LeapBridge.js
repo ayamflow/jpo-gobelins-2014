@@ -34,19 +34,24 @@ var LeapBridge = function(fingersNumber, handsNumber, x, y, fingerRadius) {
         };
     }
 
-    // Leap detection
-    var controller = new Leap.Controller();
-    // controller.on('connect', this.onLeapDeviceConnect.bind(this));
-    controller.on('deviceConnected', this.onLeapDeviceConnect.bind(this));
-    controller.on('deviceDisconnected', this.onLeapDeviceDisconnect.bind(this));
-    controller.connect();
+    if(Leap) {
+        // Leap detection
+        var controller = new Leap.Controller();
+        controller.on('connect', this.onLeapDeviceConnect.bind(this));
+        controller.on('deviceConnected', this.onLeapDeviceConnected.bind(this));
+        controller.on('deviceDisconnected', this.onLeapDeviceDisconnect.bind(this));
+        controller.connect();
+    }
 };
 
 LeapBridge.prototype =  {
     onLeapDeviceConnect: function() {
         console.log('[LeapBridge] onConnect');
-        this.isLeap = true;
         Leap.loop(this.listen.bind(this));
+    },
+
+    onLeapDeviceConnected: function() {
+        console.log('[LeapBridge] KOUKOU');
     },
 
     onLeapDeviceDisconnect: function() {
@@ -55,7 +60,8 @@ LeapBridge.prototype =  {
     },
 
     listen: function(event) {
-        if(!this.isLeap) return;
+        // console.log(event.valid);
+        this.isLeap = true;
 
         var finger, lastFinger, tipPosition;
         for(var i = 0; i < this.fingersNumber; i++) {

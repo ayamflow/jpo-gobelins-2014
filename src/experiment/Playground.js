@@ -29,16 +29,10 @@ Playground.prototype = {
           volume: 0.3
         });
         this.ambiant = new Howl({
-            urls: ['assets/sounds/ambient.mp3'],
+            urls: ['assets/sounds/ambiant.mp3'],
             autoplay: true,
             loop: true
         });
-        /*this.sapien = new Howl({
-            urls: ['assets/sounds/sapien.mp3'],
-            autoplay: true,
-            loop: true,
-            volume: 0.6
-        });*/
     },
 
     initRenderer: function() {
@@ -112,11 +106,8 @@ Playground.prototype = {
     },
 
     movePlane: function() {
-        TweenLite.fromTo(this.movingPlane.position, 6, {z: -200}, {z: -9000, yoyo: true, repeat: -1, delay: 1.2});
-        TweenLite.fromTo(this.bgLight.position, 6, {z: -150}, {z: -9000 + 50, yoyo: true, repeat: -1, delay: 1.2});
-        if(!this.lightsOn) {
-            setTimeout(this.movePlane.bind(this), 8000);
-        }
+        TweenLite.fromTo(this.movingPlane.position, 6, {z: -200}, {z: -9000, delay: 1.2});
+        TweenLite.fromTo(this.bgLight.position, 6, {z: -150}, {z: -9000 + 50, delay: 1.2});
     },
 
     initLights: function() {

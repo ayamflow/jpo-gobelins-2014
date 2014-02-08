@@ -1,2951 +1,14 @@
-var Constants = {
-    showMesh: true,
-    showLines: false,
-    cameraPosition: {
-        x: 0,
-        y: 6,
-        z: 0
-    },
-    cameraRotation: {
-        x: 0,
-        y: 0,
-        z: 0
-    },
-    frontLightPosition: {
-        x: 390,
-        y: -140,
-        z: -380
-    },
-    midLightPosition: {
-        x: -1000,
-        y: 60,
-        z: -1700
-    },
-    backLightPosition: {
-        x: -730,
-        y: 60,
-        z: -6500
-    },
-    backgroundPosition: {
-        x: -600,
-        y: 200,
-        z: -9000
-    },
-    leapLightHelperPosition: {
-        x: 0,
-        y: 100,
-        z: -2500
-    },
-    lightIntensity: {
-        back: 10,
-        mid: 10,
-        front: 10,
-        leap: 3
-    }
-};
-;var Constants = Constants || {};
-
-var Playground = function()
-{
-    this.isDebug = false;
-    if(this.isDebug)
-    {
-        this.debug();
-    }
-
-    // Kick it !
-    this.init();
-    this.initGui();
-};
-
-Playground.prototype = {
-    init: function()
-    {
-        this.initSounds();
-        this.initRenderer();
-        this.initMeshes();
-        this.initLights();
-    },
-
-    initSounds: function() {
-        this.switchSound = new Howl({
-          urls: ['assets/sounds/door.mp3'],
-          autoplay: false,
-          volume: 0.3
-        });
-        this.ambiant = new Howl({
-            urls: ['assets/sounds/ambient.mp3'],
-            autoplay: true,
-            loop: true
-        });
-        /*this.sapien = new Howl({
-            urls: ['assets/sounds/sapien.mp3'],
-            autoplay: true,
-            loop: true,
-            volume: 0.6
-        });*/
-    },
-
-    initRenderer: function() {
-        this.resize = new Resize();
-        this.renderer = new THREE.WebGLRenderer({antialias: true});
-        this.camera = new THREE.PerspectiveCamera(30, this.resize.screenWidth / this.resize.screenHeight, 100, 10000);
-        this.scene = new THREE.Scene();
-
-        this.leap = new LeapBridge();
-        this.mouse = new Mouse();
-
-        this.scene.add(this.camera);
-        this.camera.position = Constants.cameraPosition;
-
-        this.renderer.setSize(this.resize.screenWidth, this.resize.screenHeight);
-        document.body.appendChild(this.renderer.domElement);
-
-        var rtParams = {
-            minFilter: THREE.LinearFilter,
-            magFilter: THREE.LinearFilter,
-            format: THREE.RGBFormat,
-            stencilBuffer: true
-        };
-
-        // Render pass
-        this.renderPass = new THREE.RenderPass(this.scene, this.camera);
-
-        // Noise pass
-        this.filmPass   = new THREE.FilmPass( 0.02, 0, 0, false);
-
-        // Effect Composer
-        this.composer   = new THREE.EffectComposer( this.renderer, new THREE.WebGLRenderTarget( window.innerWidth, window.innerWidth, rtParams ) );
-        this.composer.addPass(this.renderPass);
-        this.composer.addPass(this.filmPass);
-
-        this.filmPass.renderToScreen = true;
-    },
-
-    initMeshes: function() {
-        // Background
-        // this.background = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshBasicMaterial({color: 0xE65F39})); // MeshBasicMaterial to make it really visible
-        this.movingPlane = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshLambertMaterial({color: 0xE65F39}));
-        // this.scene.add(this.background);
-        this.scene.add(this.movingPlane);
-        // this.background.position.set(Constants.backgroundPosition.x, Constants.backgroundPosition.y, Constants.backgroundPosition.z)
-        this.movingPlane.position = Constants.backgroundPosition;
-
-        var loader = new THREE.OBJLoader();
-        loader.load('assets/models/model_clean.obj', function (object) {
-            this.mesh = object.children[0];
-            this.lines = object.clone().children[0];
-            this.scene.add(this.mesh);
-            // this.scene.add(this.lines);
-            this.mesh.material.transparent = true;
-            this.lines.material = new THREE.MeshLambertMaterial({color: 0xFFFF00, wireframe: true, wireframeLinewidth: 4});
-
-            // Backup vertices positions
-            this.verticesPositions = [];
-
-            var vertices = this.mesh.geometry.vertices;
-            for(var i = 0; i < vertices.length; i++) {
-                this.verticesPositions.push(vertices[i].z);
-            }
-
-            this.mesh.geometry.dynamic = true;
-            this.mesh.geometry.mergeVertices();
-
-            this.render();
-            this.movePlane();
-        }.bind(this));
-    },
-
-    movePlane: function() {
-        TweenLite.fromTo(this.movingPlane.position, 6, {z: -200}, {z: -9000, yoyo: true, repeat: -1, delay: 1.2});
-        TweenLite.fromTo(this.bgLight.position, 6, {z: -150}, {z: -9000 + 50, yoyo: true, repeat: -1, delay: 1.2});
-        if(!this.lightsOn) {
-            setTimeout(this.movePlane.bind(this), 8000);
-        }
-    },
-
-    initLights: function() {
-        this.ambientLight = new THREE.AmbientLight(0x1E1E1E);
-        this.scene.add(this.ambientLight);
-
-        this.bgLight = new THREE.PointLight(0xE65F39, 120, 1000);
-        // this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
-        this.scene.add(this.bgLight);
-
-        this.frontLight = new THREE.PointLight(0xCC1834, Constants.lightIntensity.front, 1000);
-        this.frontLight.position = Constants.frontLightPosition;
-        this.scene.add(this.frontLight);
-        this.frontLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xCC1834}));
-        this.frontLightHelper.position = this.frontLight.position;
-        // this.scene.add(this.frontLightHelper);
-
-        this.midLight = new THREE.PointLight(0x3418CC, Constants.lightIntensity.mid, 1000);
-        this.midLight.position = Constants.midLightPosition;
-        this.scene.add(this.midLight);
-        this.midLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0x3418CC}));
-        this.midLightHelper.position = this.midLight.position;
-        // this.scene.add(this.midLightHelper);
-
-        this.backLight = new THREE.PointLight(0xFF8800, Constants.lightIntensity.back, 1000);
-        this.backLight.position = Constants.backLightPosition;
-        this.scene.add(this.backLight);
-        this.backLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
-        this.backLightHelper.position = this.backLight.position;
-        // this.scene.add(this.backLightHelper);
-
-        this.leapLight = new THREE.PointLight(0x0080FF, Constants.lightIntensity.leap, 1000);
-        this.scene.add(this.leapLight);
-
-        this.leapLightHelper = new THREE.Object3D();
-        this.scene.add(this.leapLightHelper);
-        var leapCube1 = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
-        var leapCube2 = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
-        leapCube2.rotation.x = Math.cos(10);
-        leapCube2.rotation.y = Math.sin(10);
-        this.leapLightHelper.add(leapCube1);
-        this.leapLightHelper.add(leapCube2);
-        this.leapLightHelper.position = this.leapLight.position;
-        this.scene.add(this.leapLightHelper);
-
-        // Living light
-        var self = this;
-        this.lightController = {
-            origin: null,
-            lights: [],
-            drawObject: null,
-
-            initWithLights: function(number){
-                this.drawObject = new THREE.Object3D();
-                this.origin = new THREE.Vector3(0, 0, -500);
-
-
-                for (var i = 0; i < number; i++) {
-                    var light    = new THREE.PointLight(0xFF8800, 10, 500);
-                    light.helper = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
-                    light.helper.receiveShadow = false;
-                    light.helper.castShadow = false;
-                    light.glow   = this.glow();
-                    light.delta  = new THREE.Vector3();
-                    light.startAngle = Math.random() * Math.PI * 2;
-
-                    light.randomSpeed = function(){
-                        light.speed = new THREE.Vector3(
-                            Math.random()*0.1,
-                            Math.random()*0.1,
-                            Math.random()*0.1
-                        );
-                    };
-
-                    light.randomSpeed();
-                    setInterval(function(){
-                        light.randomSpeed();
-                    }.bind(light), 3000);
-
-                    this.lights.push(light);
-
-                    this.drawObject.add(light);
-                    this.drawObject.add(light.helper);
-                    this.drawObject.add(light.glow);
-                }
-            },
-
-            glow: function() {
-                var shader = THREE.GlowShader(self.camera.position, new THREE.Color(0xFF8800));
-                var glow = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), shader.clone());
-                glow.scale.multiplyScalar(1.5);
-                glow.receiveShadow = false;
-                glow.castShadow = false;
-                return glow;
-            },
-
-            update: function(){
-
-                var PI2 = Math.PI * 2;
-                var radius = 500;
-
-                for (var i = 0; i < this.lights.length; i++) {
-                    this.lights[i].delta.add(this.lights[i].speed);
-
-                    var position = new THREE.Vector3(
-                        this.origin.x + Math.cos(this.lights[i].delta.x + this.lights[i].startAngle) * radius + 25,
-                        this.origin.y + Math.sin(this.lights[i].delta.y + this.lights[i].startAngle) * radius *.5,
-                        this.origin.y + Math.sin(this.lights[i].delta.z + this.lights[i].startAngle) * radius + 25
-                    );
-
-                    this.lights[i].position        = position;
-                    this.lights[i].helper.position = position;
-                    this.lights[i].glow.position = position;
-                }
-            },
-        };
-
-        this.lightController.initWithLights(2);
-        this.scene.add(this.lightController.drawObject);
-
-        // Light fading control
-        this.lightsOn = true;
-        this.fading = false;
-        this.fadeLightsOut(0);
-    },
-
-    customRender: function() {
-        var time = Date.now() * 0.001;
-
-        // Animate the leap hand position
-        this.leapLightHelper.rotation.x += Math.cos(time) / 10;
-        this.leapLightHelper.rotation.y += Math.sin(time) / 10;
-
-        if(this.leap.isLeap) {
-            var hand1 = this.leap.hands[0],
-                hand2 = this.leap.hands[1];
-
-            this.leapLight.position.set(hand1.x, hand1.y, -2500 + hand1.z * 10);
-
-            // Turn the light off if no hand
-            if(!hand1.valid) {
-                this.fadeLightsOut();
-            }
-            else {
-                this.fadeLightsIn();
-            }
-
-            // Shake based on the distance between 2 hands
-            if(hand1.valid && hand2.valid) {
-                var dx = Math.abs(hand1.x - hand2.x) / 500;
-                this.shake(time, 100 * (1 - dx));
-            }
-            else {
-                this.resetShake();
-            }
-        }
-        else {
-            this.fadeLightsIn(0);
-            var mx = this.mouse.x / this.resize.screenWidth * 1900 - 1000;
-            this.leapLightHelper.position.set(mx, 100, this.mouse.y / this.resize.screenHeight * 1500 - 2000);
-            if(this.mouse.isDown) {
-                this.shake(time, 120);
-            }
-        }
-    },
-
-    shake: function(time, force) {
-        if(force > 110) {
-            // this.filmPass.uniforms.grayscale.value = !!~~(Math.random() * 2); // Random boolean
-            this.filmPass.uniforms.nIntensity.value = Math.random();
-            this.filmPass.uniforms.sIntensity.value = Math.random();
-            this.filmPass.uniforms.sCount.value = Math.random();
-        }
-        var vertices = this.mesh.geometry.vertices;
-        for(var i = 0; i < vertices.length; i++) {
-            vertices[i].z = this.verticesPositions[i] + Math.random() * force;
-        }
-        this.mesh.geometry.verticesNeedUpdate = true;
-        this.mesh.geometry.computeFaceNormals();
-    },
-
-    resetShake: function() {
-        this.filmPass.uniforms.grayscale.value = false;
-        this.filmPass.uniforms.nIntensity.value = 1;
-        this.filmPass.uniforms.sIntensity.value = 0;
-        this.filmPass.uniforms.sCount.value = 0;
-
-        var vertices = this.mesh.geometry.vertices;
-        for(var i = 0; i < vertices.length; i++) {
-            TweenLite.to(vertices[i], 0.4, {z: this.verticesPositions[i]});
-        }
-        this.mesh.geometry.verticesNeedUpdate = true;
-        this.mesh.geometry.computeFaceNormals();
-    },
-
-    fadeLightsIn: function(time) {
-        if(this.fading || this.lightsOn) return;
-        // console.log('fadeLightsIn');
-        this.switchSound.play();
-        time = time || 0.5;
-        this.fading = true;
-        TweenLite.to(this.leapLight, time, {intensity: Constants.lightIntensity.leap, ease: Expo.easeIn});
-        TweenLite.to(this.midLight, time, {intensity: Constants.lightIntensity.mid, ease: Expo.easeIn});
-        TweenLite.to(this.backLight, time, {intensity: Constants.lightIntensity.back, ease: Expo.easeIn});
-        TweenLite.to(this.frontLight, time, {intensity: Constants.lightIntensity.front,
-            onComplete: function() {
-                this.fading = false;
-                this.lightsOn = true;
-            }.bind(this)
-        , ease: Expo.easeIn});
-    },
-
-    fadeLightsOut: function(time) {
-        if(this.fading || !this.lightsOn) return;
-        // console.log('fadeLightsOut');
-        this.switchSound.play();
-        time = time || 0.5;
-        this.fading = true;
-        TweenLite.to(this.leapLight, time, {intensity: 0, ease: Expo.easeOut});
-        TweenLite.to(this.midLight, time, {intensity: 0, ease: Expo.easeOut});
-        TweenLite.to(this.backLight, time, {intensity: 0, ease: Expo.easeOut});
-        TweenLite.to(this.frontLight, time, {intensity: 0,
-            onComplete: function() {
-                    this.fading = false;
-                    this.lightsOn = false;
-            }.bind(this)
-        , ease: Expo.easeOut});
-    },
-
-    render: function()
-    {
-        if(this.isDebug)
-        {
-            this.stats.update();
-        }
-
-        this.customRender();
-
-        this.composer.render(0.01);
-        this.lightController.update();
-        // this.renderer.render(this.scene, this.camera);
-        // this.renderer.clear();
-        // this.composer.render();
-
-
-        setTimeout(function(){
-            window.requestAnimationFrame(this.render.bind(this));
-        }.bind(this), 1000 / 30);
-        // requestAnimationFrame(this.render.bind(this));
-    },
-
-    debug: function() {
-        this.stats = new Stats();
-        this.stats.domElement.style.position = 'absolute';
-        this.stats.domElement.style.left = '0px';
-        this.stats.domElement.style.top = '0px';
-        this.stats.domElement.style.zIndex = '100';
-        document.body.appendChild(this.stats.domElement);
-    },
-
-    initGui: function() {
-        this.gui = new dat.GUI();
-
-        this.gui.add(Constants, 'showMesh').onChange(function() {
-            this.scene.remove(this.mesh);
-            if(Constants.showMesh) {
-                this.scene.add(this.mesh);
-            }
-        }.bind(this));
-
-        this.gui.add(Constants, 'showLines').onChange(function() {
-            this.scene.remove(this.lines);
-            if(Constants.showLines) {
-                this.scene.add(this.lines);
-            }
-        }.bind(this));
-
-        var cameraPosition = this.gui.addFolder('cameraPosition');
-        cameraPosition.add(Constants.cameraPosition, 'x').min(-2000).max(2000);
-        cameraPosition.add(Constants.cameraPosition, 'y').min(-2000).max(2000);
-        cameraPosition.add(Constants.cameraPosition, 'z').min(-2000).max(2000);
-
-        var frontLight = this.gui.addFolder('frontLightPosition');
-        frontLight.add(Constants.frontLightPosition, 'x').min(-1000).max(1000);
-        frontLight.add(Constants.frontLightPosition, 'y').min(-1000).max(5000);
-        frontLight.add(Constants.frontLightPosition, 'z').min(-1000).max(1000);
-
-        var midLight = this.gui.addFolder('midLightPosition');
-        midLight.add(Constants.midLightPosition, 'x').min(-1000).max(1000);
-        midLight.add(Constants.midLightPosition, 'y').min(-1000).max(5000);
-        midLight.add(Constants.midLightPosition, 'z').min(-6000).max(0);
-
-        var backLight = this.gui.addFolder('backLightPosition');
-        backLight.add(Constants.backLightPosition, 'x').min(-1000).max(1000);
-        backLight.add(Constants.backLightPosition, 'y').min(-1000).max(5000);
-        backLight.add(Constants.backLightPosition, 'z').min(-20000).max(0);
-
-        var leapLightHelper = this.gui.addFolder('leapHelper');
-        leapLightHelper.add(Constants.leapLightHelperPosition, 'x').min(-1000).max(1000).onChange(function() {
-            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
-        }.bind(this));
-        leapLightHelper.add(Constants.leapLightHelperPosition, 'y').min(-1000).max(1000).onChange(function() {
-            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
-        }.bind(this));
-        leapLightHelper.add(Constants.leapLightHelperPosition, 'z').min(-10000).max(1000).onChange(function() {
-            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
-        }.bind(this));
-
-        this.gui.close();
-    }
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.BloomPass = function ( strength, kernelSize, sigma, resolution ) {
-
-	strength = ( strength !== undefined ) ? strength : 1;
-	kernelSize = ( kernelSize !== undefined ) ? kernelSize : 25;
-	sigma = ( sigma !== undefined ) ? sigma : 4.0;
-	resolution = ( resolution !== undefined ) ? resolution : 256;
-
-	// render targets
-
-	var pars = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat };
-
-	this.renderTargetX = new THREE.WebGLRenderTarget( resolution, resolution, pars );
-	this.renderTargetY = new THREE.WebGLRenderTarget( resolution, resolution, pars );
-
-	// copy material
-
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.BloomPass relies on THREE.CopyShader" );
-
-	var copyShader = THREE.CopyShader;
-
-	this.copyUniforms = THREE.UniformsUtils.clone( copyShader.uniforms );
-
-	this.copyUniforms[ "opacity" ].value = strength;
-
-	this.materialCopy = new THREE.ShaderMaterial( {
-
-		uniforms: this.copyUniforms,
-		vertexShader: copyShader.vertexShader,
-		fragmentShader: copyShader.fragmentShader,
-		blending: THREE.AdditiveBlending,
-		transparent: true
-
-	} );
-
-	// convolution material
-
-	if ( THREE.ConvolutionShader === undefined )
-		console.error( "THREE.BloomPass relies on THREE.ConvolutionShader" );
-
-	var convolutionShader = THREE.ConvolutionShader;
-
-	this.convolutionUniforms = THREE.UniformsUtils.clone( convolutionShader.uniforms );
-
-	this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurx;
-	this.convolutionUniforms[ "cKernel" ].value = THREE.ConvolutionShader.buildKernel( sigma );
-
-	this.materialConvolution = new THREE.ShaderMaterial( {
-
-		uniforms: this.convolutionUniforms,
-		vertexShader:  convolutionShader.vertexShader,
-		fragmentShader: convolutionShader.fragmentShader,
-		defines: {
-			"KERNEL_SIZE_FLOAT": kernelSize.toFixed( 1 ),
-			"KERNEL_SIZE_INT": kernelSize.toFixed( 0 )
-		}
-
-	} );
-
-	this.enabled = true;
-	this.needsSwap = false;
-	this.clear = false;
-
-};
-
-THREE.BloomPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
-
-		if ( maskActive ) renderer.context.disable( renderer.context.STENCIL_TEST );
-
-		// Render quad with blured scene into texture (convolution pass 1)
-
-		THREE.EffectComposer.quad.material = this.materialConvolution;
-
-		this.convolutionUniforms[ "tDiffuse" ].value = readBuffer;
-		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurX;
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, this.renderTargetX, true );
-
-
-		// Render quad with blured scene into texture (convolution pass 2)
-
-		this.convolutionUniforms[ "tDiffuse" ].value = this.renderTargetX;
-		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurY;
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, this.renderTargetY, true );
-
-		// Render original scene with superimposed blur to texture
-
-		THREE.EffectComposer.quad.material = this.materialCopy;
-
-		this.copyUniforms[ "tDiffuse" ].value = this.renderTargetY;
-
-		if ( maskActive ) renderer.context.enable( renderer.context.STENCIL_TEST );
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, readBuffer, this.clear );
-
-	}
-
-};
-
-THREE.BloomPass.blurX = new THREE.Vector2( 0.001953125, 0.0 );
-THREE.BloomPass.blurY = new THREE.Vector2( 0.0, 0.001953125 );
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.DotScreenPass = function ( center, angle, scale ) {
-
-	if ( THREE.DotScreenShader === undefined )
-		console.error( "THREE.DotScreenPass relies on THREE.DotScreenShader" );
-
-	var shader = THREE.DotScreenShader;
-
-	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-
-	if ( center !== undefined ) this.uniforms[ "center" ].value.copy( center );
-	if ( angle !== undefined ) this.uniforms[ "angle"].value = angle;
-	if ( scale !== undefined ) this.uniforms[ "scale"].value = scale;
-
-	this.material = new THREE.ShaderMaterial( {
-
-		uniforms: this.uniforms,
-		vertexShader: shader.vertexShader,
-		fragmentShader: shader.fragmentShader
-
-	} );
-
-	this.enabled = true;
-	this.renderToScreen = false;
-	this.needsSwap = true;
-
-};
-
-THREE.DotScreenPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		this.uniforms[ "tDiffuse" ].value = readBuffer;
-		this.uniforms[ "tSize" ].value.set( readBuffer.width, readBuffer.height );
-
-		THREE.EffectComposer.quad.material = this.material;
-
-		if ( this.renderToScreen ) {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
-
-		} else {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, false );
-
-		}
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.EffectComposer = function ( renderer, renderTarget ) {
-
-	this.renderer = renderer;
-
-	if ( renderTarget === undefined ) {
-
-		var width = window.innerWidth || 1;
-		var height = window.innerHeight || 1;
-		var parameters = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat, stencilBuffer: false };
-
-		renderTarget = new THREE.WebGLRenderTarget( width, height, parameters );
-
-	}
-
-	this.renderTarget1 = renderTarget;
-	this.renderTarget2 = renderTarget.clone();
-
-	this.writeBuffer = this.renderTarget1;
-	this.readBuffer = this.renderTarget2;
-
-	this.passes = [];
-
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.EffectComposer relies on THREE.CopyShader" );
-
-	this.copyPass = new THREE.ShaderPass( THREE.CopyShader );
-
-};
-
-THREE.EffectComposer.prototype = {
-
-	swapBuffers: function() {
-
-		var tmp = this.readBuffer;
-		this.readBuffer = this.writeBuffer;
-		this.writeBuffer = tmp;
-
-	},
-
-	addPass: function ( pass ) {
-
-		this.passes.push( pass );
-
-	},
-
-	insertPass: function ( pass, index ) {
-
-		this.passes.splice( index, 0, pass );
-
-	},
-
-	render: function ( delta ) {
-
-		this.writeBuffer = this.renderTarget1;
-		this.readBuffer = this.renderTarget2;
-
-		var maskActive = false;
-
-		var pass, i, il = this.passes.length;
-
-		for ( i = 0; i < il; i ++ ) {
-
-			pass = this.passes[ i ];
-
-			if ( !pass.enabled ) continue;
-
-			pass.render( this.renderer, this.writeBuffer, this.readBuffer, delta, maskActive );
-
-			if ( pass.needsSwap ) {
-
-				if ( maskActive ) {
-
-					var context = this.renderer.context;
-
-					context.stencilFunc( context.NOTEQUAL, 1, 0xffffffff );
-
-					this.copyPass.render( this.renderer, this.writeBuffer, this.readBuffer, delta );
-
-					context.stencilFunc( context.EQUAL, 1, 0xffffffff );
-
-				}
-
-				this.swapBuffers();
-
-			}
-
-			if ( pass instanceof THREE.MaskPass ) {
-
-				maskActive = true;
-
-			} else if ( pass instanceof THREE.ClearMaskPass ) {
-
-				maskActive = false;
-
-			}
-
-		}
-
-	},
-
-	reset: function ( renderTarget ) {
-
-		if ( renderTarget === undefined ) {
-
-			renderTarget = this.renderTarget1.clone();
-
-			renderTarget.width = window.innerWidth;
-			renderTarget.height = window.innerHeight;
-
-		}
-
-		this.renderTarget1 = renderTarget;
-		this.renderTarget2 = renderTarget.clone();
-
-		this.writeBuffer = this.renderTarget1;
-		this.readBuffer = this.renderTarget2;
-
-	},
-
-	setSize: function ( width, height ) {
-
-		var renderTarget = this.renderTarget1.clone();
-
-		renderTarget.width = width;
-		renderTarget.height = height;
-
-		this.reset( renderTarget );
-
-	}
-
-};
-
-// shared ortho camera
-
-THREE.EffectComposer.camera = new THREE.OrthographicCamera( -1, 1, 1, -1, 0, 1 );
-
-THREE.EffectComposer.quad = new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ), null );
-
-THREE.EffectComposer.scene = new THREE.Scene();
-THREE.EffectComposer.scene.add( THREE.EffectComposer.quad );
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.FilmPass = function ( noiseIntensity, scanlinesIntensity, scanlinesCount, grayscale ) {
-
-	if ( THREE.FilmShader === undefined )
-		console.error( "THREE.FilmPass relies on THREE.FilmShader" );
-
-	var shader = THREE.FilmShader;
-
-	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-
-	this.material = new THREE.ShaderMaterial( {
-
-		uniforms: this.uniforms,
-		vertexShader: shader.vertexShader,
-		fragmentShader: shader.fragmentShader
-
-	} );
-
-	if ( grayscale !== undefined )	this.uniforms.grayscale.value = grayscale;
-	if ( noiseIntensity !== undefined ) this.uniforms.nIntensity.value = noiseIntensity;
-	if ( scanlinesIntensity !== undefined ) this.uniforms.sIntensity.value = scanlinesIntensity;
-	if ( scanlinesCount !== undefined ) this.uniforms.sCount.value = scanlinesCount;
-
-	this.enabled = true;
-	this.renderToScreen = false;
-	this.needsSwap = true;
-
-};
-
-THREE.FilmPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		this.uniforms[ "tDiffuse" ].value = readBuffer;
-		this.uniforms[ "time" ].value += delta;
-
-		THREE.EffectComposer.quad.material = this.material;
-
-		if ( this.renderToScreen ) {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
-
-		} else {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, false );
-
-		}
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.MaskPass = function ( scene, camera ) {
-
-	this.scene = scene;
-	this.camera = camera;
-
-	this.enabled = true;
-	this.clear = true;
-	this.needsSwap = false;
-
-	this.inverse = false;
-
-};
-
-THREE.MaskPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		var context = renderer.context;
-
-		// don't update color or depth
-
-		context.colorMask( false, false, false, false );
-		context.depthMask( false );
-
-		// set up stencil
-
-		var writeValue, clearValue;
-
-		if ( this.inverse ) {
-
-			writeValue = 0;
-			clearValue = 1;
-
-		} else {
-
-			writeValue = 1;
-			clearValue = 0;
-
-		}
-
-		context.enable( context.STENCIL_TEST );
-		context.stencilOp( context.REPLACE, context.REPLACE, context.REPLACE );
-		context.stencilFunc( context.ALWAYS, writeValue, 0xffffffff );
-		context.clearStencil( clearValue );
-
-		// draw into the stencil buffer
-
-		renderer.render( this.scene, this.camera, readBuffer, this.clear );
-		renderer.render( this.scene, this.camera, writeBuffer, this.clear );
-
-		// re-enable update of color and depth
-
-		context.colorMask( true, true, true, true );
-		context.depthMask( true );
-
-		// only render where stencil is set to 1
-
-		context.stencilFunc( context.EQUAL, 1, 0xffffffff );  // draw if == 1
-		context.stencilOp( context.KEEP, context.KEEP, context.KEEP );
-
-	}
-
-};
-
-
-THREE.ClearMaskPass = function () {
-
-	this.enabled = true;
-
-};
-
-THREE.ClearMaskPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		var context = renderer.context;
-
-		context.disable( context.STENCIL_TEST );
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.RenderPass = function ( scene, camera, overrideMaterial, clearColor, clearAlpha ) {
-
-	this.scene = scene;
-	this.camera = camera;
-
-	this.overrideMaterial = overrideMaterial;
-
-	this.clearColor = clearColor;
-	this.clearAlpha = ( clearAlpha !== undefined ) ? clearAlpha : 1;
-
-	this.oldClearColor = new THREE.Color();
-	this.oldClearAlpha = 1;
-
-	this.enabled = true;
-	this.clear = true;
-	this.needsSwap = false;
-
-};
-
-THREE.RenderPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		this.scene.overrideMaterial = this.overrideMaterial;
-
-		if ( this.clearColor ) {
-
-			this.oldClearColor.copy( renderer.getClearColor() );
-			this.oldClearAlpha = renderer.getClearAlpha();
-
-			renderer.setClearColor( this.clearColor, this.clearAlpha );
-
-		}
-
-		renderer.render( this.scene, this.camera, readBuffer, this.clear );
-
-		if ( this.clearColor ) {
-
-			renderer.setClearColor( this.oldClearColor, this.oldClearAlpha );
-
-		}
-
-		this.scene.overrideMaterial = null;
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.ShaderPass = function ( shader, textureID ) {
-
-	this.textureID = ( textureID !== undefined ) ? textureID : "tDiffuse";
-
-	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-
-	this.material = new THREE.ShaderMaterial( {
-
-		uniforms: this.uniforms,
-		vertexShader: shader.vertexShader,
-		fragmentShader: shader.fragmentShader
-
-	} );
-
-	this.renderToScreen = false;
-
-	this.enabled = true;
-	this.needsSwap = true;
-	this.clear = false;
-
-};
-
-THREE.ShaderPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		if ( this.uniforms[ this.textureID ] ) {
-
-			this.uniforms[ this.textureID ].value = readBuffer;
-
-		}
-
-		THREE.EffectComposer.quad.material = this.material;
-
-		if ( this.renderToScreen ) {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
-
-		} else {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, this.clear );
-
-		}
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.TexturePass = function ( texture, opacity ) {
-
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.TexturePass relies on THREE.CopyShader" );
-
-	var shader = THREE.CopyShader;
-
-	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-
-	this.uniforms[ "opacity" ].value = ( opacity !== undefined ) ? opacity : 1.0;
-	this.uniforms[ "tDiffuse" ].value = texture;
-
-	this.material = new THREE.ShaderMaterial( {
-
-		uniforms: this.uniforms,
-		vertexShader: shader.vertexShader,
-		fragmentShader: shader.fragmentShader
-
-	} );
-
-	this.enabled = true;
-	this.needsSwap = false;
-
-};
-
-THREE.TexturePass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		THREE.EffectComposer.quad.material = this.material;
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, readBuffer );
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Bleach bypass shader [http://en.wikipedia.org/wiki/Bleach_bypass]
- * - based on Nvidia example
- * http://developer.download.nvidia.com/shaderlibrary/webpages/shader_library.html#post_bleach_bypass
- */
-
-THREE.BleachBypassShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"opacity":  { type: "f", value: 1.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float opacity;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 base = texture2D( tDiffuse, vUv );",
-
-			"vec3 lumCoeff = vec3( 0.25, 0.65, 0.1 );",
-			"float lum = dot( lumCoeff, base.rgb );",
-			"vec3 blend = vec3( lum );",
-
-			"float L = min( 1.0, max( 0.0, 10.0 * ( lum - 0.45 ) ) );",
-
-			"vec3 result1 = 2.0 * base.rgb * blend;",
-			"vec3 result2 = 1.0 - 2.0 * ( 1.0 - blend ) * ( 1.0 - base.rgb );",
-
-			"vec3 newColor = mix( result1, result2, L );",
-
-			"float A2 = opacity * base.a;",
-			"vec3 mixRGB = A2 * newColor.rgb;",
-			"mixRGB += ( ( 1.0 - A2 ) * base.rgb );",
-
-			"gl_FragColor = vec4( mixRGB, base.a );",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Colorify shader
- */
-
-THREE.ColorifyShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"color":    { type: "c", value: new THREE.Color( 0xffffff ) }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform vec3 color;",
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 texel = texture2D( tDiffuse, vUv );",
-
-			"vec3 luma = vec3( 0.299, 0.587, 0.114 );",
-			"float v = dot( texel.xyz, luma );",
-
-			"gl_FragColor = vec4( v * color, texel.w );",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Convolution shader
- * ported from o3d sample to WebGL / GLSL
- * http://o3d.googlecode.com/svn/trunk/samples/convolution.html
- */
-
-THREE.ConvolutionShader = {
-
-	defines: {
-
-		"KERNEL_SIZE_FLOAT": "25.0",
-		"KERNEL_SIZE_INT": "25",
-
-	},
-
-	uniforms: {
-
-		"tDiffuse":        { type: "t", value: null },
-		"uImageIncrement": { type: "v2", value: new THREE.Vector2( 0.001953125, 0.0 ) },
-		"cKernel":         { type: "fv1", value: [] }
-
-	},
-
-	vertexShader: [
-
-		"uniform vec2 uImageIncrement;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv - ( ( KERNEL_SIZE_FLOAT - 1.0 ) / 2.0 ) * uImageIncrement;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float cKernel[ KERNEL_SIZE_INT ];",
-
-		"uniform sampler2D tDiffuse;",
-		"uniform vec2 uImageIncrement;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec2 imageCoord = vUv;",
-			"vec4 sum = vec4( 0.0, 0.0, 0.0, 0.0 );",
-
-			"for( int i = 0; i < KERNEL_SIZE_INT; i ++ ) {",
-
-				"sum += texture2D( tDiffuse, imageCoord ) * cKernel[ i ];",
-				"imageCoord += uImageIncrement;",
-
-			"}",
-
-			"gl_FragColor = sum;",
-
-		"}"
-
-
-	].join("\n"),
-
-	buildKernel: function ( sigma ) {
-
-		// We lop off the sqrt(2 * pi) * sigma term, since we're going to normalize anyway.
-
-		function gauss( x, sigma ) {
-
-			return Math.exp( - ( x * x ) / ( 2.0 * sigma * sigma ) );
-
-		}
-
-		var i, values, sum, halfWidth, kMaxKernelSize = 25, kernelSize = 2 * Math.ceil( sigma * 3.0 ) + 1;
-
-		if ( kernelSize > kMaxKernelSize ) kernelSize = kMaxKernelSize;
-		halfWidth = ( kernelSize - 1 ) * 0.5;
-
-		values = new Array( kernelSize );
-		sum = 0.0;
-		for ( i = 0; i < kernelSize; ++i ) {
-
-			values[ i ] = gauss( i - halfWidth, sigma );
-			sum += values[ i ];
-
-		}
-
-		// normalize the kernel
-
-		for ( i = 0; i < kernelSize; ++i ) values[ i ] /= sum;
-
-		return values;
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Full-screen textured quad shader
- */
-
-THREE.CopyShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"opacity":  { type: "f", value: 1.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float opacity;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 texel = texture2D( tDiffuse, vUv );",
-			"gl_FragColor = opacity * texel;",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Dot screen shader
- * based on glfx.js sepia shader
- * https://github.com/evanw/glfx.js
- */
-
-THREE.DotScreenShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"tSize":    { type: "v2", value: new THREE.Vector2( 256, 256 ) },
-		"center":   { type: "v2", value: new THREE.Vector2( 0.5, 0.5 ) },
-		"angle":    { type: "f", value: 1.57 },
-		"scale":    { type: "f", value: 1.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform vec2 center;",
-		"uniform float angle;",
-		"uniform float scale;",
-		"uniform vec2 tSize;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"float pattern() {",
-
-			"float s = sin( angle ), c = cos( angle );",
-
-			"vec2 tex = vUv * tSize - center;",
-			"vec2 point = vec2( c * tex.x - s * tex.y, s * tex.x + c * tex.y ) * scale;",
-
-			"return ( sin( point.x ) * sin( point.y ) ) * 4.0;",
-
-		"}",
-
-		"void main() {",
-
-			"vec4 color = texture2D( tDiffuse, vUv );",
-
-			"float average = ( color.r + color.g + color.b ) / 3.0;",
-
-			"gl_FragColor = vec4( vec3( average * 10.0 - 5.0 + pattern() ), color.a );",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Film grain & scanlines shader
- *
- * - ported from HLSL to WebGL / GLSL
- * http://www.truevision3d.com/forums/showcase/staticnoise_colorblackwhite_scanline_shaders-t18698.0.html
- *
- * Screen Space Static Postprocessor
- *
- * Produces an analogue noise overlay similar to a film grain / TV static
- *
- * Original implementation and noise algorithm
- * Pat 'Hawthorne' Shearon
- *
- * Optimized scanlines + noise version with intensity scaling
- * Georg 'Leviathan' Steinrohder
- *
- * This version is provided under a Creative Commons Attribution 3.0 License
- * http://creativecommons.org/licenses/by/3.0/
- */
-
-THREE.FilmShader = {
-
-	uniforms: {
-
-		"tDiffuse":   { type: "t", value: null },
-		"time":       { type: "f", value: 0.0 },
-		"nIntensity": { type: "f", value: 0.5 },
-		"sIntensity": { type: "f", value: 0.05 },
-		"sCount":     { type: "f", value: 4096 },
-		"grayscale":  { type: "i", value: 1 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		// control parameter
-		"uniform float time;",
-
-		"uniform bool grayscale;",
-
-		// noise effect intensity value (0 = no effect, 1 = full effect)
-		"uniform float nIntensity;",
-
-		// scanlines effect intensity value (0 = no effect, 1 = full effect)
-		"uniform float sIntensity;",
-
-		// scanlines effect count value (0 = no effect, 4096 = full effect)
-		"uniform float sCount;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			// sample the source
-			"vec4 cTextureScreen = texture2D( tDiffuse, vUv );",
-
-			// make some noise
-			"float x = vUv.x * vUv.y * time *  1000.0;",
-			"x = mod( x, 13.0 ) * mod( x, 123.0 );",
-			"float dx = mod( x, 0.01 );",
-
-			// add noise
-			"vec3 cResult = cTextureScreen.rgb + cTextureScreen.rgb * clamp( 0.1 + dx * 100.0, 0.0, 1.0 );",
-
-			// get us a sine and cosine
-			"vec2 sc = vec2( sin( vUv.y * sCount ), cos( vUv.y * sCount ) );",
-
-			// add scanlines
-			"cResult += cTextureScreen.rgb * vec3( sc.x, sc.y, sc.x ) * sIntensity;",
-
-			// interpolate between source and result by intensity
-			"cResult = cTextureScreen.rgb + clamp( nIntensity, 0.0,1.0 ) * ( cResult - cTextureScreen.rgb );",
-
-			// convert to grayscale if desired
-			"if( grayscale ) {",
-
-				"cResult = vec3( cResult.r * 0.3 + cResult.g * 0.59 + cResult.b * 0.11 );",
-
-			"}",
-
-			"gl_FragColor =  vec4( cResult, cTextureScreen.a );",
-
-		"}"
-
-	].join("\n")
-
-};
-;
-
-THREE.GlowShader = function(cameraPosition, color){
-    return new THREE.ShaderMaterial(
-    {
-
-        uniforms: {
-            "c": { type: "f", value: 0.2 },
-            "p": { type: "f", value: 1.4 },
-            glowColor: { type: "c", value: color },
-            viewVector: { type: "v3", value: cameraPosition },
-        },
-
-        vertexShader: [
-            "uniform vec3 viewVector;",
-            "uniform float c;",
-            "uniform float p;",
-            "varying float intensity;",
-
-            "void main()",
-            "{",
-                "vec3 vNormal = normalize( normalMatrix * normal );",
-                "vec3 vNormel = normalize( normalMatrix * viewVector );",
-                "intensity = pow( c - dot(vNormal, vNormel), p );",
-                "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-            "}"
-        ].join('\n'),
-
-        fragmentShader: [
-            "uniform vec3 glowColor;",
-            "varying float intensity;",
-
-            "void main()",
-            "{",
-                "vec3 glow = glowColor * intensity;",
-                "gl_FragColor = vec4( glow, 1.0 );",
-            "}"
-        ].join('\n'),
-        side: THREE.FrontSide,
-        blending: THREE.AdditiveBlending,
-        transparent: true
-    }   );
-}
-
-
-
-
-
-
-
-
-
-;/**
- * @author zz85 / http://www.lab4games.net/zz85/blog
- *
- * Two pass Gaussian blur filter (horizontal and vertical blur shaders)
- * - described in http://www.gamerendering.com/2008/10/11/gaussian-blur-filter-shader/
- *   and used in http://www.cake23.de/traveling-wavefronts-lit-up.html
- *
- * - 9 samples per pass
- * - standard deviation 2.7
- * - "h" and "v" parameters should be set to "1 / width" and "1 / height"
- */
-
-THREE.HorizontalBlurShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"h":        { type: "f", value: 1.0 / 512.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform sampler2D tDiffuse;",
-		"uniform float h;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 sum = vec4( 0.0 );",
-
-			"sum += texture2D( tDiffuse, vec2( vUv.x - 4.0 * h, vUv.y ) ) * 0.051;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x - 3.0 * h, vUv.y ) ) * 0.0918;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x - 2.0 * h, vUv.y ) ) * 0.12245;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x - 1.0 * h, vUv.y ) ) * 0.1531;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y ) ) * 0.1633;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x + 1.0 * h, vUv.y ) ) * 0.1531;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x + 2.0 * h, vUv.y ) ) * 0.12245;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x + 3.0 * h, vUv.y ) ) * 0.0918;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x + 4.0 * h, vUv.y ) ) * 0.051;",
-
-			"gl_FragColor = sum;",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Sepia tone shader
- * based on glfx.js sepia shader
- * https://github.com/evanw/glfx.js
- */
-
-THREE.SepiaShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"amount":   { type: "f", value: 1.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float amount;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 color = texture2D( tDiffuse, vUv );",
-			"vec3 c = color.rgb;",
-
-			"color.r = dot( c, vec3( 1.0 - 0.607 * amount, 0.769 * amount, 0.189 * amount ) );",
-			"color.g = dot( c, vec3( 0.349 * amount, 1.0 - 0.314 * amount, 0.168 * amount ) );",
-			"color.b = dot( c, vec3( 0.272 * amount, 0.534 * amount, 1.0 - 0.869 * amount ) );",
-
-			"gl_FragColor = vec4( min( vec3( 1.0 ), color.rgb ), color.a );",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author zz85 / http://www.lab4games.net/zz85/blog
- *
- * Two pass Gaussian blur filter (horizontal and vertical blur shaders)
- * - described in http://www.gamerendering.com/2008/10/11/gaussian-blur-filter-shader/
- *   and used in http://www.cake23.de/traveling-wavefronts-lit-up.html
- *
- * - 9 samples per pass
- * - standard deviation 2.7
- * - "h" and "v" parameters should be set to "1 / width" and "1 / height"
- */
-
-THREE.VerticalBlurShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"v":        { type: "f", value: 1.0 / 512.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform sampler2D tDiffuse;",
-		"uniform float v;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 sum = vec4( 0.0 );",
-
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 4.0 * v ) ) * 0.051;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 3.0 * v ) ) * 0.0918;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 2.0 * v ) ) * 0.12245;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 1.0 * v ) ) * 0.1531;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y ) ) * 0.1633;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 1.0 * v ) ) * 0.1531;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 2.0 * v ) ) * 0.12245;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 3.0 * v ) ) * 0.0918;",
-			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 4.0 * v ) ) * 0.051;",
-
-			"gl_FragColor = sum;",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Vignette shader
- * based on PaintEffect postprocess from ro.me
- * http://code.google.com/p/3-dreams-of-black/source/browse/deploy/js/effects/PaintEffect.js
- */
-
-THREE.VignetteShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"offset":   { type: "f", value: 1.0 },
-		"darkness": { type: "f", value: 1.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float offset;",
-		"uniform float darkness;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			// Eskil's vignette
-
-			"vec4 texel = texture2D( tDiffuse, vUv );",
-			"vec2 uv = ( vUv - vec2( 0.5 ) ) * vec2( offset );",
-			"gl_FragColor = vec4( mix( texel.rgb, vec3( 1.0 - darkness ), dot( uv, uv ) ), texel.a );",
-
-			/*
-			// alternative version from glfx.js
-			// this one makes more "dusty" look (as opposed to "burned")
-
-			"vec4 color = texture2D( tDiffuse, vUv );",
-			"float dist = distance( vUv, vec2( 0.5 ) );",
-			"color.rgb *= smoothstep( 0.8, offset * 0.799, dist *( darkness + offset ) );",
-			"gl_FragColor = color;",
-			*/
-
-		"}"
-
-	].join("\n")
-
-};
-;define(['tinycolor'], function(tinycolor) {
-    return {
-        createHSLScale: function(start, end, steps) {
-            start = tinycolor(start).toHsl();
-            end = tinycolor(end).toHsl();
-
-            var hueDecrease = (end.h - start.h) / steps;
-            var satDecrease = (end.s - start.s) / steps;
-            var lightDecrease = (end.l - start.l) / steps;
-
-            var scale = [];
-            for(var i = 0; i < steps; i++) {
-                scale[i] = tinycolor({
-                    h: start.h + hueDecrease * i,
-                    s: start.s + satDecrease * i,
-                    l: start.l + lightDecrease * i
-                }).toHexString();
-            }
-
-            return scale;
-        },
-
-        createRBScale: function(start, end, steps) {
-            start = tinycolor(start).toRgb();
-            end = tinycolor(end).toRgb();
-
-            var redDecrease = (end.r - start.r) / steps;
-            var greenDecrease = (end.g - start.g) / steps;
-            var blueDecrease = (end.b - start.b) / steps;
-
-            var scale = [];
-            for(var i = 0; i < steps; i++) {
-                scale[i] = tinycolor({
-                    r: start.r + redDecrease * i,
-                    g: start.g + greenDecrease * i,
-                    b: start.b + blueDecrease * i,
-                    a: 1
-                }).toHexString();
-            }
-
-            return scale;
-        },
-
-        toRGBA: function(color, opacity) {
-            return tinycolor(color).toRgbString().replace('rgb', 'rgba').replace(')', ', ' + opacity + ')');
-        }
-    };
-});;var LeapBridge = function(fingersNumber, handsNumber, x, y, fingerRadius) {
-
-    this.isLeap = false;
-    this.FINGER_RADIUS = fingerRadius || 10;
-    this.fingersNumber = fingersNumber || 10;
-    this.handsNumber = handsNumber || 2;
-    x = x || 1;
-    y = y || 1;
-
-    this.fingers = [];
-    for(var i = 0; i < this.fingersNumber; i++) {
-        this.fingers[i] = {
-            x: x,
-            y: y,
-            z: x / y,
-            ox: x,
-            oy: y,
-            oz: x / y
-        };
-    }
-
-    this.hands = [];
-    for(i = 0; i < this.handsNumber; i++) {
-        this.hands[i] = {
-            x: x,
-            y: y,
-            z: x / y,
-            ox: x,
-            oy: y,
-            oz: x / y,
-            sphereCenter: [],
-            sphereRadius: 0,
-            valid: false
-        };
-    }
-
-    // Leap detection
-    var controller = new Leap.Controller();
-    // controller.on('connect', this.onLeapDeviceConnect.bind(this));
-    controller.on('deviceConnected', this.onLeapDeviceConnect.bind(this));
-    controller.on('deviceDisconnected', this.onLeapDeviceDisconnect.bind(this));
-    controller.connect();
-};
-
-LeapBridge.prototype =  {
-    onLeapDeviceConnect: function() {
-        console.log('[LeapBridge] onConnect');
-        this.isLeap = true;
-        Leap.loop(this.listen.bind(this));
-    },
-
-    onLeapDeviceDisconnect: function() {
-        console.log('[LeapBridge] onLeapDeviceDisconnect');
-        this.isLeap = false;
-    },
-
-    listen: function(event) {
-        if(!this.isLeap) return;
-
-        var finger, lastFinger, tipPosition;
-        for(var i = 0; i < this.fingersNumber; i++) {
-            finger = event.fingers[i];
-            lastFinger = event.controller.lastFrame.fingers[i];
-
-            // Writes up to 10 fingers to sketch.touches.
-            if(finger && finger.valid) {
-                tipPosition = finger.stabilizedTipPosition;
-                this.fingers[i].x = tipPosition[0] - this.FINGER_RADIUS;
-                this.fingers[i].y = -(tipPosition[1] - this.FINGER_RADIUS); // Y axis is inverted
-                this.fingers[i].z = tipPosition[2] - this.FINGER_RADIUS;
-            }
-            // Uses Leap.Controller.lastFrame to also write old and delta coordinates.
-            if(lastFinger && lastFinger.valid) {
-                this.fingers[i].ox = lastFinger.tipPosition[0];
-                this.fingers[i].oy = lastFinger.tipPosition[1];
-                this.fingers[i].oz = lastFinger.tipPosition[2];
-
-                // this.dx = this.ox - this.x;
-                // this.dy = this.oy - this.y;
-                // this.dz = this.oz - this.z;
-            }
-        }
-
-        var hand;
-        for(i = 0; i < this.handsNumber; i++) {
-            hand = event.hands[i];
-            if(!hand) {
-                this.hands[i].valid = false;
-                return;
-            }
-
-            this.hands[i].x = hand.stabilizedPalmPosition[0];
-            this.hands[i].y = hand.stabilizedPalmPosition[1];
-            this.hands[i].z = hand.stabilizedPalmPosition[2];
-            this.hands[i].sphereCenter = hand.sphereCenter;
-            this.hands[i].sphereRadius = hand.sphereRadius;
-            this.hands[i].valid = true;
-        }
-    }
-};;var MathHelper = {
-    rand: function(min, max) {
-        return Math.random() * (max - min) + min;
-    },
-
-    randInt: function(min, max) {
-        return ~~(Math.random() * (max - min) + min);
-    },
-
-    max: function(a, b) {
-        if(a < b) return b;
-        else return a;
-    },
-
-    dist: function(x1, y1, x2, y2) {
-        return Math.sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)));
-    },
-
-    pDist: function(p1, p2) {
-        return this.dist(p1.x, p1.y, p2.x, p2.y);
-    },
-
-    radToDeg: function(radians) {
-        return radians / (Math.PI / 180);
-    },
-
-    degToRad: function(degrees) {
-        return degrees * (Math.PI / 180);
-    },
-
-    hypotenuse: function(a, b) {
-        return Math.sqrt(a * a + b * b);
-    },
-
-    angle: function(x1, y1, x2, y2) {
-        var dx = x2 - x1,
-        dy = y2 - y1;
-        return dx < 0 ? Math.atan(dy / dx) : Math.PI + Math.atan(dy / dx);
-    },
-
-    pAngle: function(p1, p2) {
-        return this.angle(p1.x, p1.y, p2.x, p2.y);
-    },
-
-};;var Mouse = function(x, y) {
-    this.x = x;
-    this.y = y;
-
-    this.ox = x;
-    this.oy = y;
-
-    this.isDown = false;
-
-    window.addEventListener("mousemove", this.onMouseMove.bind(this));
-    window.addEventListener("mousedown", this.onMouseDown.bind(this));
-    window.addEventListener("mouseup", this.onMouseUp.bind(this));
-};
-
-Mouse.prototype = {
-    onMouseMove: function(e) {
-        this.ox = this.x;
-        this.oy = this.y;
-        this.x = e.clientX;
-        this.y = e.clientY;
-    },
-
-    onMouseUp: function(e) {
-        this.isDown = false;
-    },
-
-    onMouseDown: function(e) {
-        this.isDown = true;
-    }
-};;var Resize = function() {
-    this.screenWidth = window.innerWidth;
-    this.screenHeight = window.innerHeight;
-    this.halfScreenWidth = this.screenWidth >> 1;
-    this.halfScreenHeight = this.screenHeight >> 1;
-
-    // A list of elements to resize
-    this.resizables = [];
-
-    // window.addEventListener('resize', this.onResize.bind(this));
-};
-
-Resize.prototype = {
-    enableSmoothing: function(context, value) {
-        a = value || false;
-
-        context.webkitImageSmoothingEnabled = value;
-        context.mozImageSmoothingEnabled = value;
-        context.imageSmoothingEnabled = value;
-    },
-
-    onResize: function() {
-        this.screenWidth = window.innerWidth;
-        this.screenHeight = window.innerHeight;
-        this.halfScreenWidth = this.screenWidth >> 1;
-        this.halfScreenHeight = this.screenHeight >> 1;
-
-        // Resize supplied elements
-        // for(var i = 0; i < this.resizables.length; i++) {
-        //     this.resizables[i].width = this.screenWidth;
-        //     this.resizables[i].height = this.screenHeight;
-        // }
-    }
-};;window.onload = function() {
-    var playground = new Playground();
-};;/*!
- * VERSION: beta 1.9.3
- * DATE: 2013-04-02
- * UPDATES AND DOCS AT: http://www.greensock.com
- *
- * @license Copyright (c) 2008-2014, GreenSock. All rights reserved.
- * This work is subject to the terms at http://www.greensock.com/terms_of_use.html or for
- * Club GreenSock members, the software agreement that was issued with your membership.
- * 
- * @author: Jack Doyle, jack@greensock.com
- **/
-(window._gsQueue||(window._gsQueue=[])).push(function(){"use strict";window._gsDefine("easing.Back",["easing.Ease"],function(t){var e,i,s,r=window.GreenSockGlobals||window,n=r.com.greensock,a=2*Math.PI,o=Math.PI/2,h=n._class,l=function(e,i){var s=h("easing."+e,function(){},!0),r=s.prototype=new t;return r.constructor=s,r.getRatio=i,s},_=t.register||function(){},u=function(t,e,i,s){var r=h("easing."+t,{easeOut:new e,easeIn:new i,easeInOut:new s},!0);return _(r,t),r},c=function(t,e,i){this.t=t,this.v=e,i&&(this.next=i,i.prev=this,this.c=i.v-e,this.gap=i.t-t)},p=function(e,i){var s=h("easing."+e,function(t){this._p1=t||0===t?t:1.70158,this._p2=1.525*this._p1},!0),r=s.prototype=new t;return r.constructor=s,r.getRatio=i,r.config=function(t){return new s(t)},s},f=u("Back",p("BackOut",function(t){return(t-=1)*t*((this._p1+1)*t+this._p1)+1}),p("BackIn",function(t){return t*t*((this._p1+1)*t-this._p1)}),p("BackInOut",function(t){return 1>(t*=2)?.5*t*t*((this._p2+1)*t-this._p2):.5*((t-=2)*t*((this._p2+1)*t+this._p2)+2)})),m=h("easing.SlowMo",function(t,e,i){e=e||0===e?e:.7,null==t?t=.7:t>1&&(t=1),this._p=1!==t?e:0,this._p1=(1-t)/2,this._p2=t,this._p3=this._p1+this._p2,this._calcEnd=i===!0},!0),d=m.prototype=new t;return d.constructor=m,d.getRatio=function(t){var e=t+(.5-t)*this._p;return this._p1>t?this._calcEnd?1-(t=1-t/this._p1)*t:e-(t=1-t/this._p1)*t*t*t*e:t>this._p3?this._calcEnd?1-(t=(t-this._p3)/this._p1)*t:e+(t-e)*(t=(t-this._p3)/this._p1)*t*t*t:this._calcEnd?1:e},m.ease=new m(.7,.7),d.config=m.config=function(t,e,i){return new m(t,e,i)},e=h("easing.SteppedEase",function(t){t=t||1,this._p1=1/t,this._p2=t+1},!0),d=e.prototype=new t,d.constructor=e,d.getRatio=function(t){return 0>t?t=0:t>=1&&(t=.999999999),(this._p2*t>>0)*this._p1},d.config=e.config=function(t){return new e(t)},i=h("easing.RoughEase",function(e){e=e||{};for(var i,s,r,n,a,o,h=e.taper||"none",l=[],_=0,u=0|(e.points||20),p=u,f=e.randomize!==!1,m=e.clamp===!0,d=e.template instanceof t?e.template:null,g="number"==typeof e.strength?.4*e.strength:.4;--p>-1;)i=f?Math.random():1/u*p,s=d?d.getRatio(i):i,"none"===h?r=g:"out"===h?(n=1-i,r=n*n*g):"in"===h?r=i*i*g:.5>i?(n=2*i,r=.5*n*n*g):(n=2*(1-i),r=.5*n*n*g),f?s+=Math.random()*r-.5*r:p%2?s+=.5*r:s-=.5*r,m&&(s>1?s=1:0>s&&(s=0)),l[_++]={x:i,y:s};for(l.sort(function(t,e){return t.x-e.x}),o=new c(1,1,null),p=u;--p>-1;)a=l[p],o=new c(a.x,a.y,o);this._prev=new c(0,0,0!==o.t?o:o.next)},!0),d=i.prototype=new t,d.constructor=i,d.getRatio=function(t){var e=this._prev;if(t>e.t){for(;e.next&&t>=e.t;)e=e.next;e=e.prev}else for(;e.prev&&e.t>=t;)e=e.prev;return this._prev=e,e.v+(t-e.t)/e.gap*e.c},d.config=function(t){return new i(t)},i.ease=new i,u("Bounce",l("BounceOut",function(t){return 1/2.75>t?7.5625*t*t:2/2.75>t?7.5625*(t-=1.5/2.75)*t+.75:2.5/2.75>t?7.5625*(t-=2.25/2.75)*t+.9375:7.5625*(t-=2.625/2.75)*t+.984375}),l("BounceIn",function(t){return 1/2.75>(t=1-t)?1-7.5625*t*t:2/2.75>t?1-(7.5625*(t-=1.5/2.75)*t+.75):2.5/2.75>t?1-(7.5625*(t-=2.25/2.75)*t+.9375):1-(7.5625*(t-=2.625/2.75)*t+.984375)}),l("BounceInOut",function(t){var e=.5>t;return t=e?1-2*t:2*t-1,t=1/2.75>t?7.5625*t*t:2/2.75>t?7.5625*(t-=1.5/2.75)*t+.75:2.5/2.75>t?7.5625*(t-=2.25/2.75)*t+.9375:7.5625*(t-=2.625/2.75)*t+.984375,e?.5*(1-t):.5*t+.5})),u("Circ",l("CircOut",function(t){return Math.sqrt(1-(t-=1)*t)}),l("CircIn",function(t){return-(Math.sqrt(1-t*t)-1)}),l("CircInOut",function(t){return 1>(t*=2)?-.5*(Math.sqrt(1-t*t)-1):.5*(Math.sqrt(1-(t-=2)*t)+1)})),s=function(e,i,s){var r=h("easing."+e,function(t,e){this._p1=t||1,this._p2=e||s,this._p3=this._p2/a*(Math.asin(1/this._p1)||0)},!0),n=r.prototype=new t;return n.constructor=r,n.getRatio=i,n.config=function(t,e){return new r(t,e)},r},u("Elastic",s("ElasticOut",function(t){return this._p1*Math.pow(2,-10*t)*Math.sin((t-this._p3)*a/this._p2)+1},.3),s("ElasticIn",function(t){return-(this._p1*Math.pow(2,10*(t-=1))*Math.sin((t-this._p3)*a/this._p2))},.3),s("ElasticInOut",function(t){return 1>(t*=2)?-.5*this._p1*Math.pow(2,10*(t-=1))*Math.sin((t-this._p3)*a/this._p2):.5*this._p1*Math.pow(2,-10*(t-=1))*Math.sin((t-this._p3)*a/this._p2)+1},.45)),u("Expo",l("ExpoOut",function(t){return 1-Math.pow(2,-10*t)}),l("ExpoIn",function(t){return Math.pow(2,10*(t-1))-.001}),l("ExpoInOut",function(t){return 1>(t*=2)?.5*Math.pow(2,10*(t-1)):.5*(2-Math.pow(2,-10*(t-1)))})),u("Sine",l("SineOut",function(t){return Math.sin(t*o)}),l("SineIn",function(t){return-Math.cos(t*o)+1}),l("SineInOut",function(t){return-.5*(Math.cos(Math.PI*t)-1)})),h("easing.EaseLookup",{find:function(e){return t.map[e]}},!0),_(r.SlowMo,"SlowMo","ease,"),_(i,"RoughEase","ease,"),_(e,"SteppedEase","ease,"),f},!0)}),window._gsDefine&&window._gsQueue.pop()();;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.BloomPass = function ( strength, kernelSize, sigma, resolution ) {
-
-	strength = ( strength !== undefined ) ? strength : 1;
-	kernelSize = ( kernelSize !== undefined ) ? kernelSize : 25;
-	sigma = ( sigma !== undefined ) ? sigma : 4.0;
-	resolution = ( resolution !== undefined ) ? resolution : 256;
-
-	// render targets
-
-	var pars = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat };
-
-	this.renderTargetX = new THREE.WebGLRenderTarget( resolution, resolution, pars );
-	this.renderTargetY = new THREE.WebGLRenderTarget( resolution, resolution, pars );
-
-	// copy material
-
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.BloomPass relies on THREE.CopyShader" );
-
-	var copyShader = THREE.CopyShader;
-
-	this.copyUniforms = THREE.UniformsUtils.clone( copyShader.uniforms );
-
-	this.copyUniforms[ "opacity" ].value = strength;
-
-	this.materialCopy = new THREE.ShaderMaterial( {
-
-		uniforms: this.copyUniforms,
-		vertexShader: copyShader.vertexShader,
-		fragmentShader: copyShader.fragmentShader,
-		blending: THREE.AdditiveBlending,
-		transparent: true
-
-	} );
-
-	// convolution material
-
-	if ( THREE.ConvolutionShader === undefined )
-		console.error( "THREE.BloomPass relies on THREE.ConvolutionShader" );
-
-	var convolutionShader = THREE.ConvolutionShader;
-
-	this.convolutionUniforms = THREE.UniformsUtils.clone( convolutionShader.uniforms );
-
-	this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurx;
-	this.convolutionUniforms[ "cKernel" ].value = THREE.ConvolutionShader.buildKernel( sigma );
-
-	this.materialConvolution = new THREE.ShaderMaterial( {
-
-		uniforms: this.convolutionUniforms,
-		vertexShader:  convolutionShader.vertexShader,
-		fragmentShader: convolutionShader.fragmentShader,
-		defines: {
-			"KERNEL_SIZE_FLOAT": kernelSize.toFixed( 1 ),
-			"KERNEL_SIZE_INT": kernelSize.toFixed( 0 )
-		}
-
-	} );
-
-	this.enabled = true;
-	this.needsSwap = false;
-	this.clear = false;
-
-};
-
-THREE.BloomPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
-
-		if ( maskActive ) renderer.context.disable( renderer.context.STENCIL_TEST );
-
-		// Render quad with blured scene into texture (convolution pass 1)
-
-		THREE.EffectComposer.quad.material = this.materialConvolution;
-
-		this.convolutionUniforms[ "tDiffuse" ].value = readBuffer;
-		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurX;
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, this.renderTargetX, true );
-
-
-		// Render quad with blured scene into texture (convolution pass 2)
-
-		this.convolutionUniforms[ "tDiffuse" ].value = this.renderTargetX;
-		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurY;
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, this.renderTargetY, true );
-
-		// Render original scene with superimposed blur to texture
-
-		THREE.EffectComposer.quad.material = this.materialCopy;
-
-		this.copyUniforms[ "tDiffuse" ].value = this.renderTargetY;
-
-		if ( maskActive ) renderer.context.enable( renderer.context.STENCIL_TEST );
-
-		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, readBuffer, this.clear );
-
-	}
-
-};
-
-THREE.BloomPass.blurX = new THREE.Vector2( 0.001953125, 0.0 );
-THREE.BloomPass.blurY = new THREE.Vector2( 0.0, 0.001953125 );
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Convolution shader
- * ported from o3d sample to WebGL / GLSL
- * http://o3d.googlecode.com/svn/trunk/samples/convolution.html
- */
-
-THREE.ConvolutionShader = {
-
-	defines: {
-
-		"KERNEL_SIZE_FLOAT": "25.0",
-		"KERNEL_SIZE_INT": "25",
-
-	},
-
-	uniforms: {
-
-		"tDiffuse":        { type: "t", value: null },
-		"uImageIncrement": { type: "v2", value: new THREE.Vector2( 0.001953125, 0.0 ) },
-		"cKernel":         { type: "fv1", value: [] }
-
-	},
-
-	vertexShader: [
-
-		"uniform vec2 uImageIncrement;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv - ( ( KERNEL_SIZE_FLOAT - 1.0 ) / 2.0 ) * uImageIncrement;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float cKernel[ KERNEL_SIZE_INT ];",
-
-		"uniform sampler2D tDiffuse;",
-		"uniform vec2 uImageIncrement;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec2 imageCoord = vUv;",
-			"vec4 sum = vec4( 0.0, 0.0, 0.0, 0.0 );",
-
-			"for( int i = 0; i < KERNEL_SIZE_INT; i ++ ) {",
-
-				"sum += texture2D( tDiffuse, imageCoord ) * cKernel[ i ];",
-				"imageCoord += uImageIncrement;",
-
-			"}",
-
-			"gl_FragColor = sum;",
-
-		"}"
-
-
-	].join("\n"),
-
-	buildKernel: function ( sigma ) {
-
-		// We lop off the sqrt(2 * pi) * sigma term, since we're going to normalize anyway.
-
-		function gauss( x, sigma ) {
-
-			return Math.exp( - ( x * x ) / ( 2.0 * sigma * sigma ) );
-
-		}
-
-		var i, values, sum, halfWidth, kMaxKernelSize = 25, kernelSize = 2 * Math.ceil( sigma * 3.0 ) + 1;
-
-		if ( kernelSize > kMaxKernelSize ) kernelSize = kMaxKernelSize;
-		halfWidth = ( kernelSize - 1 ) * 0.5;
-
-		values = new Array( kernelSize );
-		sum = 0.0;
-		for ( i = 0; i < kernelSize; ++i ) {
-
-			values[ i ] = gauss( i - halfWidth, sigma );
-			sum += values[ i ];
-
-		}
-
-		// normalize the kernel
-
-		for ( i = 0; i < kernelSize; ++i ) values[ i ] /= sum;
-
-		return values;
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- *
- * Full-screen textured quad shader
- */
-
-THREE.CopyShader = {
-
-	uniforms: {
-
-		"tDiffuse": { type: "t", value: null },
-		"opacity":  { type: "f", value: 1.0 }
-
-	},
-
-	vertexShader: [
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vUv = uv;",
-			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
-
-		"}"
-
-	].join("\n"),
-
-	fragmentShader: [
-
-		"uniform float opacity;",
-
-		"uniform sampler2D tDiffuse;",
-
-		"varying vec2 vUv;",
-
-		"void main() {",
-
-			"vec4 texel = texture2D( tDiffuse, vUv );",
-			"gl_FragColor = opacity * texel;",
-
-		"}"
-
-	].join("\n")
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.EffectComposer = function ( renderer, renderTarget ) {
-
-	this.renderer = renderer;
-
-	if ( renderTarget === undefined ) {
-
-		var width = window.innerWidth || 1;
-		var height = window.innerHeight || 1;
-		var parameters = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat, stencilBuffer: false };
-
-		renderTarget = new THREE.WebGLRenderTarget( width, height, parameters );
-
-	}
-
-	this.renderTarget1 = renderTarget;
-	this.renderTarget2 = renderTarget.clone();
-
-	this.writeBuffer = this.renderTarget1;
-	this.readBuffer = this.renderTarget2;
-
-	this.passes = [];
-
-	if ( THREE.CopyShader === undefined )
-		console.error( "THREE.EffectComposer relies on THREE.CopyShader" );
-
-	this.copyPass = new THREE.ShaderPass( THREE.CopyShader );
-
-};
-
-THREE.EffectComposer.prototype = {
-
-	swapBuffers: function() {
-
-		var tmp = this.readBuffer;
-		this.readBuffer = this.writeBuffer;
-		this.writeBuffer = tmp;
-
-	},
-
-	addPass: function ( pass ) {
-
-		this.passes.push( pass );
-
-	},
-
-	insertPass: function ( pass, index ) {
-
-		this.passes.splice( index, 0, pass );
-
-	},
-
-	render: function ( delta ) {
-
-		this.writeBuffer = this.renderTarget1;
-		this.readBuffer = this.renderTarget2;
-
-		var maskActive = false;
-
-		var pass, i, il = this.passes.length;
-
-		for ( i = 0; i < il; i ++ ) {
-
-			pass = this.passes[ i ];
-
-			if ( !pass.enabled ) continue;
-
-			pass.render( this.renderer, this.writeBuffer, this.readBuffer, delta, maskActive );
-
-			if ( pass.needsSwap ) {
-
-				if ( maskActive ) {
-
-					var context = this.renderer.context;
-
-					context.stencilFunc( context.NOTEQUAL, 1, 0xffffffff );
-
-					this.copyPass.render( this.renderer, this.writeBuffer, this.readBuffer, delta );
-
-					context.stencilFunc( context.EQUAL, 1, 0xffffffff );
-
-				}
-
-				this.swapBuffers();
-
-			}
-
-			if ( pass instanceof THREE.MaskPass ) {
-
-				maskActive = true;
-
-			} else if ( pass instanceof THREE.ClearMaskPass ) {
-
-				maskActive = false;
-
-			}
-
-		}
-
-	},
-
-	reset: function ( renderTarget ) {
-
-		if ( renderTarget === undefined ) {
-
-			renderTarget = this.renderTarget1.clone();
-
-			renderTarget.width = window.innerWidth;
-			renderTarget.height = window.innerHeight;
-
-		}
-
-		this.renderTarget1 = renderTarget;
-		this.renderTarget2 = renderTarget.clone();
-
-		this.writeBuffer = this.renderTarget1;
-		this.readBuffer = this.renderTarget2;
-
-	},
-
-	setSize: function ( width, height ) {
-
-		var renderTarget = this.renderTarget1.clone();
-
-		renderTarget.width = width;
-		renderTarget.height = height;
-
-		this.reset( renderTarget );
-
-	}
-
-};
-
-// shared ortho camera
-
-THREE.EffectComposer.camera = new THREE.OrthographicCamera( -1, 1, 1, -1, 0, 1 );
-
-THREE.EffectComposer.quad = new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ), null );
-
-THREE.EffectComposer.scene = new THREE.Scene();
-THREE.EffectComposer.scene.add( THREE.EffectComposer.quad );
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.MaskPass = function ( scene, camera ) {
-
-	this.scene = scene;
-	this.camera = camera;
-
-	this.enabled = true;
-	this.clear = true;
-	this.needsSwap = false;
-
-	this.inverse = false;
-
-};
-
-THREE.MaskPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		var context = renderer.context;
-
-		// don't update color or depth
-
-		context.colorMask( false, false, false, false );
-		context.depthMask( false );
-
-		// set up stencil
-
-		var writeValue, clearValue;
-
-		if ( this.inverse ) {
-
-			writeValue = 0;
-			clearValue = 1;
-
-		} else {
-
-			writeValue = 1;
-			clearValue = 0;
-
-		}
-
-		context.enable( context.STENCIL_TEST );
-		context.stencilOp( context.REPLACE, context.REPLACE, context.REPLACE );
-		context.stencilFunc( context.ALWAYS, writeValue, 0xffffffff );
-		context.clearStencil( clearValue );
-
-		// draw into the stencil buffer
-
-		renderer.render( this.scene, this.camera, readBuffer, this.clear );
-		renderer.render( this.scene, this.camera, writeBuffer, this.clear );
-
-		// re-enable update of color and depth
-
-		context.colorMask( true, true, true, true );
-		context.depthMask( true );
-
-		// only render where stencil is set to 1
-
-		context.stencilFunc( context.EQUAL, 1, 0xffffffff );  // draw if == 1
-		context.stencilOp( context.KEEP, context.KEEP, context.KEEP );
-
-	}
-
-};
-
-
-THREE.ClearMaskPass = function () {
-
-	this.enabled = true;
-
-};
-
-THREE.ClearMaskPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		var context = renderer.context;
-
-		context.disable( context.STENCIL_TEST );
-
-	}
-
-};
-;/**
- * @author mrdoob / http://mrdoob.com/
- */
-
-THREE.OBJLoader = function ( manager ) {
-
-    this.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;
-
-};
-
-THREE.OBJLoader.prototype = {
-
-    constructor: THREE.OBJLoader,
-
-    load: function ( url, onLoad, onProgress, onError ) {
-
-        var scope = this;
-
-        var loader = new THREE.XHRLoader( scope.manager );
-        loader.setCrossOrigin( this.crossOrigin );
-        loader.load( url, function ( text ) {
-
-            onLoad( scope.parse( text ) );
-
-        } );
-
-    },
-
-    parse: function ( text ) {
-
-        function vector( x, y, z ) {
-
-            return new THREE.Vector3( x, y, z );
-
-        }
-
-        function uv( u, v ) {
-
-            return new THREE.Vector2( u, v );
-
-        }
-
-        function face3( a, b, c, normals ) {
-
-            return new THREE.Face3( a, b, c, normals );
-
-        }
-
-        var object = new THREE.Object3D();
-        var geometry, material, mesh;
-        var face_offset = 0;
-
-        function add_face( a, b, c, normals_inds ) {
-
-            if ( normals_inds === undefined ) {
-
-                geometry.faces.push( face3(
-                    parseInt( a ) - (face_offset + 1),
-                    parseInt( b ) - (face_offset + 1),
-                    parseInt( c ) - (face_offset + 1)
-                ) );
-
-            } else {
-
-                geometry.faces.push( face3(
-                    parseInt( a ) - (face_offset + 1),
-                    parseInt( b ) - (face_offset + 1),
-                    parseInt( c ) - (face_offset + 1),
-                    [
-                        normals[ parseInt( normals_inds[ 0 ] ) - 1 ].clone(),
-                        normals[ parseInt( normals_inds[ 1 ] ) - 1 ].clone(),
-                        normals[ parseInt( normals_inds[ 2 ] ) - 1 ].clone()
-                    ]
-                ) );
-
-            }
-
-        }
-
-        function add_uvs( a, b, c ) {
-
-            geometry.faceVertexUvs[ 0 ].push( [
-                uvs[ parseInt( a ) - 1 ].clone(),
-                uvs[ parseInt( b ) - 1 ].clone(),
-                uvs[ parseInt( c ) - 1 ].clone()
-            ] );
-
-        }
-
-        function handle_face_line(faces, uvs, normals_inds) {
-
-            if ( faces[ 3 ] === undefined ) {
-
-                add_face( faces[ 0 ], faces[ 1 ], faces[ 2 ], normals_inds );
-
-                if (!(uvs === undefined) && uvs.length > 0) {
-
-                    add_uvs( uvs[ 0 ], uvs[ 1 ], uvs[ 2 ] );
-
-                }
-
-            } else {
-
-                if (!(normals_inds === undefined) && normals_inds.length > 0) {
-
-                    add_face( faces[ 0 ], faces[ 1 ], faces[ 3 ], [ normals_inds[ 0 ], normals_inds[ 1 ], normals_inds[ 3 ] ]);
-                    add_face( faces[ 1 ], faces[ 2 ], faces[ 3 ], [ normals_inds[ 1 ], normals_inds[ 2 ], normals_inds[ 3 ] ]);
-
-                } else {
-
-                    add_face( faces[ 0 ], faces[ 1 ], faces[ 3 ]);
-                    add_face( faces[ 1 ], faces[ 2 ], faces[ 3 ]);
-
-                }
-
-                if (!(uvs === undefined) && uvs.length > 0) {
-
-                    add_uvs( uvs[ 0 ], uvs[ 1 ], uvs[ 3 ] );
-                    add_uvs( uvs[ 1 ], uvs[ 2 ], uvs[ 3 ] );
-
-                }
-
-            }
-
-        }
-
-        // create mesh if no objects in text
-
-        if ( /^o /gm.test( text ) === false ) {
-
-            geometry = new THREE.Geometry();
-            material = new THREE.MeshLambertMaterial();
-            mesh = new THREE.Mesh( geometry, material );
-            object.add( mesh );
-
-        }
-
-        var vertices = [];
-        var verticesCount = 0;
-        var normals = [];
-        var uvs = [];
-
-        // v float float float
-
-        var vertex_pattern = /v( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
-
-        // vn float float float
-
-        var normal_pattern = /vn( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
-
-        // vt float float
-
-        var uv_pattern = /vt( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
-
-        // f vertex vertex vertex ...
-
-        var face_pattern1 = /f( +\d+)( +\d+)( +\d+)( +\d+)?/;
-
-        // f vertex/uv vertex/uv vertex/uv ...
-
-        var face_pattern2 = /f( +(\d+)\/(\d+))( +(\d+)\/(\d+))( +(\d+)\/(\d+))( +(\d+)\/(\d+))?/;
-
-        // f vertex/uv/normal vertex/uv/normal vertex/uv/normal ...
-
-        var face_pattern3 = /f( +(\d+)\/(\d+)\/(\d+))( +(\d+)\/(\d+)\/(\d+))( +(\d+)\/(\d+)\/(\d+))( +(\d+)\/(\d+)\/(\d+))?/;
-
-        // f vertex//normal vertex//normal vertex//normal ...
-
-        var face_pattern4 = /f( +(\d+)\/\/(\d+))( +(\d+)\/\/(\d+))( +(\d+)\/\/(\d+))( +(\d+)\/\/(\d+))?/
-
-        //
-
-        var lines = text.split( '\n' );
-
-        for ( var i = 0; i < lines.length; i ++ ) {
-
-            var line = lines[ i ];
-            line = line.trim();
-
-            var result;
-
-            if ( line.length === 0 || line.charAt( 0 ) === '#' ) {
-
-                continue;
-
-            } else if ( ( result = vertex_pattern.exec( line ) ) !== null ) {
-
-                // ["v 1.0 2.0 3.0", "1.0", "2.0", "3.0"]
-
-                geometry.vertices.push( vector(
-                    parseFloat( result[ 1 ] ),
-                    parseFloat( result[ 2 ] ),
-                    parseFloat( result[ 3 ] )
-                ) );
-
-            } else if ( ( result = normal_pattern.exec( line ) ) !== null ) {
-
-                // ["vn 1.0 2.0 3.0", "1.0", "2.0", "3.0"]
-
-                normals.push( vector(
-                    parseFloat( result[ 1 ] ),
-                    parseFloat( result[ 2 ] ),
-                    parseFloat( result[ 3 ] )
-                ) );
-
-            } else if ( ( result = uv_pattern.exec( line ) ) !== null ) {
-
-                // ["vt 0.1 0.2", "0.1", "0.2"]
-
-                uvs.push( uv(
-                    parseFloat( result[ 1 ] ),
-                    parseFloat( result[ 2 ] )
-                ) );
-
-            } else if ( ( result = face_pattern1.exec( line ) ) !== null ) {
-
-                // ["f 1 2 3", "1", "2", "3", undefined]
-
-                handle_face_line([ result[ 1 ], result[ 2 ], result[ 3 ], result[ 4 ] ]);
-
-            } else if ( ( result = face_pattern2.exec( line ) ) !== null ) {
-
-                // ["f 1/1 2/2 3/3", " 1/1", "1", "1", " 2/2", "2", "2", " 3/3", "3", "3", undefined, undefined, undefined]
-
-                handle_face_line(
-                    [ result[ 2 ], result[ 5 ], result[ 8 ], result[ 11 ] ], //faces
-                    [ result[ 3 ], result[ 6 ], result[ 9 ], result[ 12 ] ] //uv
-                );
-
-            } else if ( ( result = face_pattern3.exec( line ) ) !== null ) {
-
-                // ["f 1/1/1 2/2/2 3/3/3", " 1/1/1", "1", "1", "1", " 2/2/2", "2", "2", "2", " 3/3/3", "3", "3", "3", undefined, undefined, undefined, undefined]
-
-                handle_face_line(
-                    [ result[ 2 ], result[ 6 ], result[ 10 ], result[ 14 ] ], //faces
-                    [ result[ 3 ], result[ 7 ], result[ 11 ], result[ 15 ] ], //uv
-                    [ result[ 4 ], result[ 8 ], result[ 12 ], result[ 16 ] ] //normal
-                );
-
-            } else if ( ( result = face_pattern4.exec( line ) ) !== null ) {
-
-                // ["f 1//1 2//2 3//3", " 1//1", "1", "1", " 2//2", "2", "2", " 3//3", "3", "3", undefined, undefined, undefined]
-
-                handle_face_line(
-                    [ result[ 2 ], result[ 5 ], result[ 8 ], result[ 11 ] ], //faces
-                    [ ], //uv
-                    [ result[ 3 ], result[ 6 ], result[ 9 ], result[ 12 ] ] //normal
-                );
-
-            } else if ( /^o /.test( line ) ) {
-
-                // object
-
-                if (!(geometry === undefined)) {
-
-                    face_offset = face_offset + geometry.vertices.length;
-
-                }
-
-                geometry = new THREE.Geometry();
-                material = new THREE.MeshLambertMaterial();
-
-                mesh = new THREE.Mesh( geometry, material );
-                mesh.name = line.substring( 2 ).trim();
-                object.add( mesh );
-
-                verticesCount = 0;
-
-            } else if ( /^g /.test( line ) ) {
-
-                // group
-
-            } else if ( /^usemtl /.test( line ) ) {
-
-                // material
-
-                material.name = line.substring( 7 ).trim();
-
-            } else if ( /^mtllib /.test( line ) ) {
-
-                // mtl file
-
-            } else if ( /^s /.test( line ) ) {
-
-                // smooth shading
-
-            } else {
-
-                // console.log( "THREE.OBJLoader: Unhandled line " + line );
-
-            }
-
-        }
-
-        for ( var i = 0, l = object.children.length; i < l; i ++ ) {
-
-            var geometry = object.children[ i ].geometry;
-
-            geometry.computeCentroids();
-            geometry.computeFaceNormals();
-            geometry.computeBoundingSphere();
-
-        }
-
-        return object;
-
-    }
-
-};;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.RenderPass = function ( scene, camera, overrideMaterial, clearColor, clearAlpha ) {
-
-	this.scene = scene;
-	this.camera = camera;
-
-	this.overrideMaterial = overrideMaterial;
-
-	this.clearColor = clearColor;
-	this.clearAlpha = ( clearAlpha !== undefined ) ? clearAlpha : 1;
-
-	this.oldClearColor = new THREE.Color();
-	this.oldClearAlpha = 1;
-
-	this.enabled = true;
-	this.clear = true;
-	this.needsSwap = false;
-
-};
-
-THREE.RenderPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		this.scene.overrideMaterial = this.overrideMaterial;
-
-		if ( this.clearColor ) {
-
-			this.oldClearColor.copy( renderer.getClearColor() );
-			this.oldClearAlpha = renderer.getClearAlpha();
-
-			renderer.setClearColor( this.clearColor, this.clearAlpha );
-
-		}
-
-		renderer.render( this.scene, this.camera, readBuffer, this.clear );
-
-		if ( this.clearColor ) {
-
-			renderer.setClearColor( this.oldClearColor, this.oldClearAlpha );
-
-		}
-
-		this.scene.overrideMaterial = null;
-
-	}
-
-};
-;/**
- * @author alteredq / http://alteredqualia.com/
- */
-
-THREE.ShaderPass = function ( shader, textureID ) {
-
-	this.textureID = ( textureID !== undefined ) ? textureID : "tDiffuse";
-
-	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-
-	this.material = new THREE.ShaderMaterial( {
-
-		uniforms: this.uniforms,
-		vertexShader: shader.vertexShader,
-		fragmentShader: shader.fragmentShader
-
-	} );
-
-	this.renderToScreen = false;
-
-	this.enabled = true;
-	this.needsSwap = true;
-	this.clear = false;
-
-};
-
-THREE.ShaderPass.prototype = {
-
-	render: function ( renderer, writeBuffer, readBuffer, delta ) {
-
-		if ( this.uniforms[ this.textureID ] ) {
-
-			this.uniforms[ this.textureID ].value = readBuffer;
-
-		}
-
-		THREE.EffectComposer.quad.material = this.material;
-
-		if ( this.renderToScreen ) {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
-
-		} else {
-
-			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, this.clear );
-
-		}
-
-	}
-
-};
-;// three.js - http://github.com/mrdoob/three.js
+/*!
+* LeapJS v0.3.0
+* http://github.com/leapmotion/leapjs/
+*
+* Copyright 2013 LeapMotion, Inc. and other contributors
+* Released under the BSD-2-Clause license
+* http://github.com/leapmotion/leapjs/blob/master/LICENSE.txt
+*/
+!function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i}({1:[function(require,module,exports){var CircularBuffer=module.exports=function(size){this.pos=0;this._buf=[];this.size=size};CircularBuffer.prototype.get=function(i){if(i==undefined)i=0;if(i>=this.size)return undefined;if(i>=this._buf.length)return undefined;return this._buf[(this.pos-i-1)%this.size]};CircularBuffer.prototype.push=function(o){this._buf[this.pos%this.size]=o;return this.pos++}},{}],2:[function(require,module,exports){var chooseProtocol=require("../protocol").chooseProtocol,EventEmitter=require("events").EventEmitter,_=require("underscore");var BaseConnection=module.exports=function(opts){this.opts=_.defaults(opts||{},{host:"127.0.0.1",enableGestures:false,port:6437,background:false,requestProtocolVersion:4});this.host=this.opts.host;this.port=this.opts.port;this.protocolVersionVerified=false;this.on("ready",function(){this.enableGestures(this.opts.enableGestures);this.setBackground(this.opts.background)})};BaseConnection.prototype.getUrl=function(){return"ws://"+this.host+":"+this.port+"/v"+this.opts.requestProtocolVersion+".json"};BaseConnection.prototype.setBackground=function(state){this.opts.background=state;if(this.protocol&&this.protocol.sendBackground&&this.background!==this.opts.background){this.background=this.opts.background;this.protocol.sendBackground(this,this.opts.background)}};BaseConnection.prototype.handleOpen=function(){if(!this.connected){this.connected=true;this.emit("connect")}};BaseConnection.prototype.enableGestures=function(enabled){this.gesturesEnabled=enabled?true:false;this.send(this.protocol.encode({enableGestures:this.gesturesEnabled}))};BaseConnection.prototype.handleClose=function(code,reason){if(!this.connected)return;this.disconnect();if(code===1001&&this.opts.requestProtocolVersion>1){if(this.protocolVersionVerified){this.protocolVersionVerified=false}else{this.opts.requestProtocolVersion--}}this.startReconnection()};BaseConnection.prototype.startReconnection=function(){var connection=this;this.reconnectionTimer=setInterval(function(){connection.reconnect()},1e3)};BaseConnection.prototype.disconnect=function(){if(!this.socket)return;this.socket.close();delete this.socket;delete this.protocol;if(this.connected){this.connected=false;this.emit("disconnect")}return true};BaseConnection.prototype.reconnect=function(){if(this.connected){clearInterval(this.reconnectionTimer)}else{this.disconnect();this.connect()}};BaseConnection.prototype.handleData=function(data){var message=JSON.parse(data);var messageEvent;if(this.protocol===undefined){messageEvent=this.protocol=chooseProtocol(message);this.protocolVersionVerified=true;this.emit("ready")}else{messageEvent=this.protocol(message)}this.emit(messageEvent.type,messageEvent)};BaseConnection.prototype.connect=function(){if(this.socket)return;this.socket=this.setupSocket();return true};BaseConnection.prototype.send=function(data){this.socket.send(data)};BaseConnection.prototype.reportFocus=function(state){if(this.focusedState===state)return;this.focusedState=state;this.emit(this.focusedState?"focus":"blur");if(this.protocol&&this.protocol.sendFocused){this.protocol.sendFocused(this,this.focusedState)}};_.extend(BaseConnection.prototype,EventEmitter.prototype)},{"../protocol":13,events:17,underscore:20}],3:[function(require,module,exports){var BaseConnection=module.exports=require("./base"),_=require("underscore");var BrowserConnection=module.exports=function(opts){BaseConnection.call(this,opts);var connection=this;this.on("ready",function(){connection.startFocusLoop()});this.on("disconnect",function(){connection.stopFocusLoop()})};_.extend(BrowserConnection.prototype,BaseConnection.prototype);BrowserConnection.prototype.setupSocket=function(){var connection=this;var socket=new WebSocket(this.getUrl());socket.onopen=function(){connection.handleOpen()};socket.onclose=function(data){connection.handleClose(data["code"],data["reason"])};socket.onmessage=function(message){connection.handleData(message.data)};return socket};BrowserConnection.prototype.startFocusLoop=function(){if(this.focusDetectorTimer)return;var connection=this;var propertyName=null;if(typeof document.hidden!=="undefined"){propertyName="hidden"}else if(typeof document.mozHidden!=="undefined"){propertyName="mozHidden"}else if(typeof document.msHidden!=="undefined"){propertyName="msHidden"}else if(typeof document.webkitHidden!=="undefined"){propertyName="webkitHidden"}else{propertyName=undefined}if(connection.windowVisible===undefined){connection.windowVisible=propertyName===undefined?true:document[propertyName]===false}var focusListener=window.addEventListener("focus",function(e){connection.windowVisible=true;updateFocusState()});var blurListener=window.addEventListener("blur",function(e){connection.windowVisible=false;updateFocusState()});this.on("disconnect",function(){window.removeEventListener("focus",focusListener);window.removeEventListener("blur",blurListener)});var updateFocusState=function(){var isVisible=propertyName===undefined?true:document[propertyName]===false;connection.reportFocus(isVisible&&connection.windowVisible)};this.focusDetectorTimer=setInterval(updateFocusState,100)};BrowserConnection.prototype.stopFocusLoop=function(){if(!this.focusDetectorTimer)return;clearTimeout(this.focusDetectorTimer);delete this.focusDetectorTimer}},{"./base":2,underscore:20}],4:[function(require,module,exports){var WebSocket=require("ws"),BaseConnection=require("./base"),_=require("underscore");var NodeConnection=module.exports=function(opts){BaseConnection.call(this,opts);var connection=this;this.on("ready",function(){connection.reportFocus(true)})};_.extend(NodeConnection.prototype,BaseConnection.prototype);NodeConnection.prototype.setupSocket=function(){var connection=this;var socket=new WebSocket(this.getUrl());socket.on("open",function(){connection.handleOpen()});socket.on("message",function(m){connection.handleData(m)});socket.on("close",function(code,reason){connection.handleClose(code,reason)});socket.on("error",function(){connection.startReconnection()});return socket}},{"./base":2,underscore:20,ws:21}],5:[function(require,module,exports){var process=require("__browserify_process");var Frame=require("./frame"),CircularBuffer=require("./circular_buffer"),Pipeline=require("./pipeline"),EventEmitter=require("events").EventEmitter,gestureListener=require("./gesture").gestureListener,_=require("underscore");var Controller=module.exports=function(opts){var inNode=typeof process!=="undefined"&&process.versions&&process.versions.node;opts=_.defaults(opts||{},{inNode:inNode});this.inNode=opts.inNode;opts=_.defaults(opts||{},{frameEventName:this.useAnimationLoop()?"animationFrame":"deviceFrame",suppressAnimationLoop:false});this.suppressAnimationLoop=opts.suppressAnimationLoop;this.frameEventName=opts.frameEventName;this.history=new CircularBuffer(200);this.lastFrame=Frame.Invalid;this.lastValidFrame=Frame.Invalid;this.lastConnectionFrame=Frame.Invalid;this.accumulatedGestures=[];if(opts.connectionType===undefined){this.connectionType=this.inBrowser()?require("./connection/browser"):require("./connection/node")}else{this.connectionType=opts.connectionType}this.connection=new this.connectionType(opts);this.setupConnectionEvents()};Controller.prototype.gesture=function(type,cb){var creator=gestureListener(this,type);if(cb!==undefined){creator.stop(cb)}return creator};Controller.prototype.setBackground=function(state){this.connection.setBackground(state)};Controller.prototype.inBrowser=function(){return!this.inNode};Controller.prototype.useAnimationLoop=function(){return this.inBrowser()&&typeof chrome==="undefined"};Controller.prototype.connect=function(){var controller=this;if(this.connection.connect()&&this.inBrowser()&&!controller.suppressAnimationLoop){var callback=function(){controller.emit("animationFrame",controller.lastConnectionFrame);window.requestAnimationFrame(callback)};window.requestAnimationFrame(callback)}};Controller.prototype.disconnect=function(){this.connection.disconnect()};Controller.prototype.frame=function(num){return this.history.get(num)||Frame.Invalid};Controller.prototype.loop=function(callback){switch(callback.length){case 1:this.on(this.frameEventName,callback);break;case 2:var controller=this;var scheduler=null;var immediateRunnerCallback=function(frame){callback(frame,function(){if(controller.lastFrame!=frame){immediateRunnerCallback(controller.lastFrame)}else{controller.once(controller.frameEventName,immediateRunnerCallback)}})};this.once(this.frameEventName,immediateRunnerCallback);break}this.connect()};Controller.prototype.addStep=function(step){if(!this.pipeline)this.pipeline=new Pipeline(this);this.pipeline.addStep(step)};Controller.prototype.processFrame=function(frame){if(frame.gestures){this.accumulatedGestures=this.accumulatedGestures.concat(frame.gestures)}if(this.pipeline){frame=this.pipeline.run(frame);if(!frame)frame=Frame.Invalid}this.lastConnectionFrame=frame;this.emit("deviceFrame",frame)};Controller.prototype.processFinishedFrame=function(frame){this.lastFrame=frame;if(frame.valid){this.lastValidFrame=frame}frame.controller=this;frame.historyIdx=this.history.push(frame);if(frame.gestures){frame.gestures=this.accumulatedGestures;this.accumulatedGestures=[];for(var gestureIdx=0;gestureIdx!=frame.gestures.length;gestureIdx++){this.emit("gesture",frame.gestures[gestureIdx],frame)}}this.emit("frame",frame)};Controller.prototype.setupConnectionEvents=function(){var controller=this;this.connection.on("frame",function(frame){controller.processFrame(frame)});this.on(this.frameEventName,function(frame){controller.processFinishedFrame(frame)});this.connection.on("disconnect",function(){controller.emit("disconnect")});this.connection.on("ready",function(){controller.emit("ready")});this.connection.on("connect",function(){controller.emit("connect")});this.connection.on("focus",function(){controller.emit("focus")});this.connection.on("blur",function(){controller.emit("blur")});this.connection.on("protocol",function(protocol){controller.emit("protocol",protocol)});this.connection.on("deviceConnect",function(evt){controller.emit(evt.state?"deviceConnected":"deviceDisconnected")})};_.extend(Controller.prototype,EventEmitter.prototype)},{"./circular_buffer":1,"./connection/browser":3,"./connection/node":4,"./frame":6,"./gesture":7,"./pipeline":11,__browserify_process:18,events:17,underscore:20}],6:[function(require,module,exports){var Hand=require("./hand"),Pointable=require("./pointable"),createGesture=require("./gesture").createGesture,glMatrix=require("gl-matrix"),mat3=glMatrix.mat3,vec3=glMatrix.vec3,InteractionBox=require("./interaction_box"),_=require("underscore");var Frame=module.exports=function(data){this.valid=true;this.id=data.id;this.timestamp=data.timestamp;this.hands=[];this.handsMap={};this.pointables=[];this.tools=[];this.fingers=[];if(data.interactionBox){this.interactionBox=new InteractionBox(data.interactionBox)}this.gestures=[];this.pointablesMap={};this._translation=data.t;this._rotation=_.flatten(data.r);this._scaleFactor=data.s;this.data=data;this.type="frame";this.currentFrameRate=data.currentFrameRate;var handMap={};for(var handIdx=0,handCount=data.hands.length;handIdx!=handCount;handIdx++){var hand=new Hand(data.hands[handIdx]);hand.frame=this;this.hands.push(hand);this.handsMap[hand.id]=hand;handMap[hand.id]=handIdx}for(var pointableIdx=0,pointableCount=data.pointables.length;pointableIdx!=pointableCount;pointableIdx++){var pointable=new Pointable(data.pointables[pointableIdx]);pointable.frame=this;this.pointables.push(pointable);this.pointablesMap[pointable.id]=pointable;(pointable.tool?this.tools:this.fingers).push(pointable);if(pointable.handId!==undefined&&handMap.hasOwnProperty(pointable.handId)){var hand=this.hands[handMap[pointable.handId]];hand.pointables.push(pointable);(pointable.tool?hand.tools:hand.fingers).push(pointable)}}if(data.gestures){for(var gestureIdx=0,gestureCount=data.gestures.length;gestureIdx!=gestureCount;gestureIdx++){this.gestures.push(createGesture(data.gestures[gestureIdx]))}}};Frame.prototype.tool=function(id){var pointable=this.pointable(id);return pointable.tool?pointable:Pointable.Invalid};Frame.prototype.pointable=function(id){return this.pointablesMap[id]||Pointable.Invalid};Frame.prototype.finger=function(id){var pointable=this.pointable(id);return!pointable.tool?pointable:Pointable.Invalid};Frame.prototype.hand=function(id){return this.handsMap[id]||Hand.Invalid};Frame.prototype.rotationAngle=function(sinceFrame,axis){if(!this.valid||!sinceFrame.valid)return 0;var rot=this.rotationMatrix(sinceFrame);var cs=(rot[0]+rot[4]+rot[8]-1)*.5;var angle=Math.acos(cs);angle=isNaN(angle)?0:angle;if(axis!==undefined){var rotAxis=this.rotationAxis(sinceFrame);angle*=vec3.dot(rotAxis,vec3.normalize(vec3.create(),axis))}return angle};Frame.prototype.rotationAxis=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return vec3.create();return vec3.normalize(vec3.create(),[this._rotation[7]-sinceFrame._rotation[5],this._rotation[2]-sinceFrame._rotation[6],this._rotation[3]-sinceFrame._rotation[1]])};Frame.prototype.rotationMatrix=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return mat3.create();var transpose=mat3.transpose(mat3.create(),this._rotation);return mat3.multiply(mat3.create(),sinceFrame._rotation,transpose)};Frame.prototype.scaleFactor=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return 1;return Math.exp(this._scaleFactor-sinceFrame._scaleFactor)};Frame.prototype.translation=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return vec3.create();return vec3.subtract(vec3.create(),this._translation,sinceFrame._translation)};Frame.prototype.toString=function(){var str="Frame [ id:"+this.id+" | timestamp:"+this.timestamp+" | Hand count:("+this.hands.length+") | Pointable count:("+this.pointables.length+")";if(this.gestures)str+=" | Gesture count:("+this.gestures.length+")";str+=" ]";return str};Frame.prototype.dump=function(){var out="";out+="Frame Info:<br/>";out+=this.toString();out+="<br/><br/>Hands:<br/>";for(var handIdx=0,handCount=this.hands.length;handIdx!=handCount;handIdx++){out+="  "+this.hands[handIdx].toString()+"<br/>"}out+="<br/><br/>Pointables:<br/>";for(var pointableIdx=0,pointableCount=this.pointables.length;pointableIdx!=pointableCount;pointableIdx++){out+="  "+this.pointables[pointableIdx].toString()+"<br/>"}if(this.gestures){out+="<br/><br/>Gestures:<br/>";for(var gestureIdx=0,gestureCount=this.gestures.length;gestureIdx!=gestureCount;gestureIdx++){out+="  "+this.gestures[gestureIdx].toString()+"<br/>"}}out+="<br/><br/>Raw JSON:<br/>";out+=JSON.stringify(this.data);return out};Frame.Invalid={valid:false,hands:[],fingers:[],tools:[],gestures:[],pointables:[],pointable:function(){return Pointable.Invalid},finger:function(){return Pointable.Invalid},hand:function(){return Hand.Invalid},toString:function(){return"invalid frame"},dump:function(){return this.toString()},rotationAngle:function(){return 0},rotationMatrix:function(){return mat3.create()},rotationAxis:function(){return vec3.create()},scaleFactor:function(){return 1},translation:function(){return vec3.create()}}},{"./gesture":7,"./hand":8,"./interaction_box":10,"./pointable":12,"gl-matrix":19,underscore:20}],7:[function(require,module,exports){var glMatrix=require("gl-matrix"),vec3=glMatrix.vec3,EventEmitter=require("events").EventEmitter,_=require("underscore");var createGesture=exports.createGesture=function(data){var gesture;switch(data.type){case"circle":gesture=new CircleGesture(data);break;case"swipe":gesture=new SwipeGesture(data);break;case"screenTap":gesture=new ScreenTapGesture(data);break;case"keyTap":gesture=new KeyTapGesture(data);break;default:throw"unkown gesture type"}gesture.id=data.id;gesture.handIds=data.handIds;gesture.pointableIds=data.pointableIds;gesture.duration=data.duration;gesture.state=data.state;gesture.type=data.type;return gesture};var gestureListener=exports.gestureListener=function(controller,type){var handlers={};var gestureMap={};controller.on("gesture",function(gesture,frame){if(gesture.type==type){if(gesture.state=="start"||gesture.state=="stop"){if(gestureMap[gesture.id]===undefined){var gestureTracker=new Gesture(gesture,frame);gestureMap[gesture.id]=gestureTracker;_.each(handlers,function(cb,name){gestureTracker.on(name,cb)})}}gestureMap[gesture.id].update(gesture,frame);if(gesture.state=="stop"){delete gestureMap[gesture.id]}}});var builder={start:function(cb){handlers["start"]=cb;return builder},stop:function(cb){handlers["stop"]=cb;return builder},complete:function(cb){handlers["stop"]=cb;return builder},update:function(cb){handlers["update"]=cb;return builder}};return builder};var Gesture=exports.Gesture=function(gesture,frame){this.gestures=[gesture];this.frames=[frame]};Gesture.prototype.update=function(gesture,frame){this.lastGesture=gesture;this.lastFrame=frame;this.gestures.push(gesture);this.frames.push(frame);this.emit(gesture.state,this)};Gesture.prototype.translation=function(){return vec3.subtract(vec3.create(),this.lastGesture.startPosition,this.lastGesture.position)};_.extend(Gesture.prototype,EventEmitter.prototype);var CircleGesture=function(data){this.center=data.center;this.normal=data.normal;this.progress=data.progress;this.radius=data.radius};CircleGesture.prototype.toString=function(){return"CircleGesture ["+JSON.stringify(this)+"]"};var SwipeGesture=function(data){this.startPosition=data.startPosition;this.position=data.position;this.direction=data.direction;this.speed=data.speed};SwipeGesture.prototype.toString=function(){return"SwipeGesture ["+JSON.stringify(this)+"]"};var ScreenTapGesture=function(data){this.position=data.position;this.direction=data.direction;this.progress=data.progress};ScreenTapGesture.prototype.toString=function(){return"ScreenTapGesture ["+JSON.stringify(this)+"]"};var KeyTapGesture=function(data){this.position=data.position;this.direction=data.direction;this.progress=data.progress};KeyTapGesture.prototype.toString=function(){return"KeyTapGesture ["+JSON.stringify(this)+"]"}},{events:17,"gl-matrix":19,underscore:20}],8:[function(require,module,exports){var Pointable=require("./pointable"),glMatrix=require("gl-matrix"),mat3=glMatrix.mat3,vec3=glMatrix.vec3,_=require("underscore");var Hand=module.exports=function(data){this.id=data.id;this.palmPosition=data.palmPosition;this.direction=data.direction;this.palmVelocity=data.palmVelocity;this.palmNormal=data.palmNormal;this.sphereCenter=data.sphereCenter;this.sphereRadius=data.sphereRadius;this.valid=true;this.pointables=[];this.fingers=[];this.tools=[];this._translation=data.t;this._rotation=_.flatten(data.r);this._scaleFactor=data.s;this.timeVisible=data.timeVisible;this.stabilizedPalmPosition=data.stabilizedPalmPosition};Hand.prototype.finger=function(id){var finger=this.frame.finger(id);return finger&&finger.handId==this.id?finger:Pointable.Invalid};Hand.prototype.rotationAngle=function(sinceFrame,axis){if(!this.valid||!sinceFrame.valid)return 0;var sinceHand=sinceFrame.hand(this.id);if(!sinceHand.valid)return 0;var rot=this.rotationMatrix(sinceFrame);var cs=(rot[0]+rot[4]+rot[8]-1)*.5;var angle=Math.acos(cs);angle=isNaN(angle)?0:angle;if(axis!==undefined){var rotAxis=this.rotationAxis(sinceFrame);angle*=vec3.dot(rotAxis,vec3.normalize(vec3.create(),axis))}return angle};Hand.prototype.rotationAxis=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return vec3.create();var sinceHand=sinceFrame.hand(this.id);if(!sinceHand.valid)return vec3.create();return vec3.normalize(vec3.create(),[this._rotation[7]-sinceHand._rotation[5],this._rotation[2]-sinceHand._rotation[6],this._rotation[3]-sinceHand._rotation[1]])};Hand.prototype.rotationMatrix=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return mat3.create();var sinceHand=sinceFrame.hand(this.id);if(!sinceHand.valid)return mat3.create();var transpose=mat3.transpose(mat3.create(),this._rotation);var m=mat3.multiply(mat3.create(),sinceHand._rotation,transpose);return m};Hand.prototype.scaleFactor=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return 1;var sinceHand=sinceFrame.hand(this.id);if(!sinceHand.valid)return 1;return Math.exp(this._scaleFactor-sinceHand._scaleFactor)};Hand.prototype.translation=function(sinceFrame){if(!this.valid||!sinceFrame.valid)return vec3.create();var sinceHand=sinceFrame.hand(this.id);if(!sinceHand.valid)return vec3.create();return[this._translation[0]-sinceHand._translation[0],this._translation[1]-sinceHand._translation[1],this._translation[2]-sinceHand._translation[2]]};Hand.prototype.toString=function(){return"Hand [ id: "+this.id+" | palm velocity:"+this.palmVelocity+" | sphere center:"+this.sphereCenter+" ] "};Hand.prototype.pitch=function(){return Math.atan2(this.direction[1],-this.direction[2])};Hand.prototype.yaw=function(){return Math.atan2(this.direction[0],-this.direction[2])};Hand.prototype.roll=function(){return Math.atan2(this.palmNormal[0],-this.palmNormal[1])};Hand.Invalid={valid:false,fingers:[],tools:[],pointables:[],pointable:function(){return Pointable.Invalid},finger:function(){return Pointable.Invalid},toString:function(){return"invalid frame"},dump:function(){return this.toString()},rotationAngle:function(){return 0},rotationMatrix:function(){return mat3.create()},rotationAxis:function(){return vec3.create()},scaleFactor:function(){return 1},translation:function(){return vec3.create()}}},{"./pointable":12,"gl-matrix":19,underscore:20}],9:[function(require,module,exports){module.exports={Controller:require("./controller"),Frame:require("./frame"),Gesture:require("./gesture"),Hand:require("./hand"),Pointable:require("./pointable"),InteractionBox:require("./interaction_box"),CircularBuffer:require("./circular_buffer"),UI:require("./ui"),glMatrix:require("gl-matrix"),mat3:require("gl-matrix").mat3,vec3:require("gl-matrix").vec3,loopController:undefined,loop:function(opts,callback){if(callback===undefined){callback=opts;opts={}}if(!this.loopController)this.loopController=new this.Controller(opts);this.loopController.loop(callback);return this.loopController}}},{"./circular_buffer":1,"./controller":5,"./frame":6,"./gesture":7,"./hand":8,"./interaction_box":10,"./pointable":12,"./ui":14,"gl-matrix":19}],10:[function(require,module,exports){var glMatrix=require("gl-matrix"),vec3=glMatrix.vec3;var InteractionBox=module.exports=function(data){this.valid=true;this.center=data.center;this.size=data.size;this.width=data.size[0];this.height=data.size[1];this.depth=data.size[2]};InteractionBox.prototype.denormalizePoint=function(normalizedPosition){return vec3.fromValues((normalizedPosition[0]-.5)*this.size[0]+this.center[0],(normalizedPosition[1]-.5)*this.size[1]+this.center[1],(normalizedPosition[2]-.5)*this.size[2]+this.center[2])};InteractionBox.prototype.normalizePoint=function(position,clamp){var vec=vec3.fromValues((position[0]-this.center[0])/this.size[0]+.5,(position[1]-this.center[1])/this.size[1]+.5,(position[2]-this.center[2])/this.size[2]+.5);if(clamp){vec[0]=Math.min(Math.max(vec[0],0),1);vec[1]=Math.min(Math.max(vec[1],0),1);vec[2]=Math.min(Math.max(vec[2],0),1)}return vec};InteractionBox.prototype.toString=function(){return"InteractionBox [ width:"+this.width+" | height:"+this.height+" | depth:"+this.depth+" ]"};InteractionBox.Invalid={valid:false}},{"gl-matrix":19}],11:[function(require,module,exports){var Pipeline=module.exports=function(){this.steps=[]};Pipeline.prototype.addStep=function(step){this.steps.push(step)};Pipeline.prototype.run=function(frame){var stepsLength=this.steps.length;for(var i=0;i!=stepsLength;i++){if(!frame)break;frame=this.steps[i](frame)}return frame}},{}],12:[function(require,module,exports){var glMatrix=require("gl-matrix"),vec3=glMatrix.vec3;var Pointable=module.exports=function(data){this.valid=true;this.id=data.id;this.handId=data.handId;this.length=data.length;this.tool=data.tool;this.width=data.width;this.direction=data.direction;this.stabilizedTipPosition=data.stabilizedTipPosition;this.tipPosition=data.tipPosition;this.tipVelocity=data.tipVelocity;this.touchZone=data.touchZone;this.touchDistance=data.touchDistance;this.timeVisible=data.timeVisible};Pointable.prototype.toString=function(){if(this.tool==true){return"Pointable [ id:"+this.id+" "+this.length+"mmx | with:"+this.width+"mm | direction:"+this.direction+" ]"}else{return"Pointable [ id:"+this.id+" "+this.length+"mmx | direction: "+this.direction+" ]"}};Pointable.prototype.hand=function(){return this.frame.hand(this.handId)};Pointable.Invalid={valid:false}},{"gl-matrix":19}],13:[function(require,module,exports){var Frame=require("./frame");var Event=function(data){this.type=data.type;this.state=data.state};var chooseProtocol=exports.chooseProtocol=function(header){var protocol;switch(header.version){case 1:case 2:case 3:case 4:protocol=JSONProtocol(header.version,function(data){return data.event?new Event(data.event):new Frame(data)});protocol.sendBackground=function(connection,state){connection.send(protocol.encode({background:state}))};protocol.sendFocused=function(connection,state){connection.send(protocol.encode({focused:state}))};break;default:throw"unrecognized version"}return protocol};var JSONProtocol=function(version,cb){var protocol=cb;protocol.encode=function(message){return JSON.stringify(message)};protocol.version=version;protocol.versionLong="Version "+version;protocol.type="protocol";return protocol}},{"./frame":6}],14:[function(require,module,exports){exports.UI={Region:require("./ui/region"),Cursor:require("./ui/cursor")}},{"./ui/cursor":15,"./ui/region":16}],15:[function(require,module,exports){var Cursor=module.exports=function(){return function(frame){var pointable=frame.pointables.sort(function(a,b){return a.z-b.z})[0];if(pointable&&pointable.valid){frame.cursorPosition=pointable.tipPosition}return frame}}},{}],16:[function(require,module,exports){var EventEmitter=require("events").EventEmitter,_=require("underscore");var Region=module.exports=function(start,end){this.start=new Vector(start);this.end=new Vector(end);this.enteredFrame=null};Region.prototype.hasPointables=function(frame){for(var i=0;i!=frame.pointables.length;i++){var position=frame.pointables[i].tipPosition;if(position.x>=this.start.x&&position.x<=this.end.x&&position.y>=this.start.y&&position.y<=this.end.y&&position.z>=this.start.z&&position.z<=this.end.z){return true}}return false};Region.prototype.listener=function(opts){var region=this;if(opts&&opts.nearThreshold)this.setupNearRegion(opts.nearThreshold);return function(frame){return region.updatePosition(frame)}};Region.prototype.clipper=function(){var region=this;return function(frame){region.updatePosition(frame);return region.enteredFrame?frame:null}};Region.prototype.setupNearRegion=function(distance){var nearRegion=this.nearRegion=new Region([this.start.x-distance,this.start.y-distance,this.start.z-distance],[this.end.x+distance,this.end.y+distance,this.end.z+distance]);var region=this;nearRegion.on("enter",function(frame){region.emit("near",frame)});nearRegion.on("exit",function(frame){region.emit("far",frame)});region.on("exit",function(frame){region.emit("near",frame)})};Region.prototype.updatePosition=function(frame){if(this.nearRegion)this.nearRegion.updatePosition(frame);if(this.hasPointables(frame)&&this.enteredFrame==null){this.enteredFrame=frame;this.emit("enter",this.enteredFrame)}else if(!this.hasPointables(frame)&&this.enteredFrame!=null){this.enteredFrame=null;this.emit("exit",this.enteredFrame)}return frame};Region.prototype.normalize=function(position){return new Vector([(position.x-this.start.x)/(this.end.x-this.start.x),(position.y-this.start.y)/(this.end.y-this.start.y),(position.z-this.start.z)/(this.end.z-this.start.z)])};Region.prototype.mapToXY=function(position,width,height){var normalized=this.normalize(position);var x=normalized.x,y=normalized.y;if(x>1)x=1;else if(x<-1)x=-1;if(y>1)y=1;else if(y<-1)y=-1;return[(x+1)/2*width,(1-y)/2*height,normalized.z]};_.extend(Region.prototype,EventEmitter.prototype)},{events:17,underscore:20}],17:[function(require,module,exports){var process=require("__browserify_process");if(!process.EventEmitter)process.EventEmitter=function(){};var EventEmitter=exports.EventEmitter=process.EventEmitter;var isArray=typeof Array.isArray==="function"?Array.isArray:function(xs){return Object.prototype.toString.call(xs)==="[object Array]"};function indexOf(xs,x){if(xs.indexOf)return xs.indexOf(x);for(var i=0;i<xs.length;i++){if(x===xs[i])return i}return-1}var defaultMaxListeners=10;EventEmitter.prototype.setMaxListeners=function(n){if(!this._events)this._events={};this._events.maxListeners=n};EventEmitter.prototype.emit=function(type){if(type==="error"){if(!this._events||!this._events.error||isArray(this._events.error)&&!this._events.error.length){if(arguments[1]instanceof Error){throw arguments[1]}else{throw new Error("Uncaught, unspecified 'error' event.")}return false}}if(!this._events)return false;var handler=this._events[type];if(!handler)return false;if(typeof handler=="function"){switch(arguments.length){case 1:handler.call(this);break;case 2:handler.call(this,arguments[1]);break;case 3:handler.call(this,arguments[1],arguments[2]);break;default:var args=Array.prototype.slice.call(arguments,1);handler.apply(this,args)}return true}else if(isArray(handler)){var args=Array.prototype.slice.call(arguments,1);var listeners=handler.slice();for(var i=0,l=listeners.length;i<l;i++){listeners[i].apply(this,args)}return true}else{return false}};EventEmitter.prototype.addListener=function(type,listener){if("function"!==typeof listener){throw new Error("addListener only takes instances of Function")}if(!this._events)this._events={};this.emit("newListener",type,listener);if(!this._events[type]){this._events[type]=listener}else if(isArray(this._events[type])){if(!this._events[type].warned){var m;if(this._events.maxListeners!==undefined){m=this._events.maxListeners}else{m=defaultMaxListeners}if(m&&m>0&&this._events[type].length>m){this._events[type].warned=true;console.error("(node) warning: possible EventEmitter memory "+"leak detected. %d listeners added. "+"Use emitter.setMaxListeners() to increase limit.",this._events[type].length);console.trace()}}this._events[type].push(listener)}else{this._events[type]=[this._events[type],listener]}return this};EventEmitter.prototype.on=EventEmitter.prototype.addListener;EventEmitter.prototype.once=function(type,listener){var self=this;self.on(type,function g(){self.removeListener(type,g);listener.apply(this,arguments)});return this};EventEmitter.prototype.removeListener=function(type,listener){if("function"!==typeof listener){throw new Error("removeListener only takes instances of Function")}if(!this._events||!this._events[type])return this;var list=this._events[type];if(isArray(list)){var i=indexOf(list,listener);if(i<0)return this;list.splice(i,1);if(list.length==0)delete this._events[type]}else if(this._events[type]===listener){delete this._events[type]}return this};EventEmitter.prototype.removeAllListeners=function(type){if(arguments.length===0){this._events={};return this}if(type&&this._events&&this._events[type])this._events[type]=null;return this};EventEmitter.prototype.listeners=function(type){if(!this._events)this._events={};if(!this._events[type])this._events[type]=[];if(!isArray(this._events[type])){this._events[type]=[this._events[type]]}return this._events[type]};EventEmitter.listenerCount=function(emitter,type){var ret;if(!emitter._events||!emitter._events[type])ret=0;else if(typeof emitter._events[type]==="function")ret=1;else ret=emitter._events[type].length;return ret}},{__browserify_process:18}],18:[function(require,module,exports){var process=module.exports={};
+process.nextTick=function(){var canSetImmediate=typeof window!=="undefined"&&window.setImmediate;var canPost=typeof window!=="undefined"&&window.postMessage&&window.addEventListener;if(canSetImmediate){return function(f){return window.setImmediate(f)}}if(canPost){var queue=[];window.addEventListener("message",function(ev){if(ev.source===window&&ev.data==="process-tick"){ev.stopPropagation();if(queue.length>0){var fn=queue.shift();fn()}}},true);return function nextTick(fn){queue.push(fn);window.postMessage("process-tick","*")}}return function nextTick(fn){setTimeout(fn,0)}}();process.title="browser";process.browser=true;process.env={};process.argv=[];process.binding=function(name){throw new Error("process.binding is not supported")};process.cwd=function(){return"/"};process.chdir=function(dir){throw new Error("process.chdir is not supported")}},{}],19:[function(require,module,exports){!function(){"use strict";var shim={};if(typeof exports==="undefined"){if(typeof define=="function"&&typeof define.amd=="object"&&define.amd){shim.exports={};define(function(){return shim.exports})}else{shim.exports=window}}else{shim.exports=exports}!function(exports){var vec2={};if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}vec2.create=function(){return new Float32Array(2)};vec2.clone=function(a){var out=new Float32Array(2);out[0]=a[0];out[1]=a[1];return out};vec2.fromValues=function(x,y){var out=new Float32Array(2);out[0]=x;out[1]=y;return out};vec2.copy=function(out,a){out[0]=a[0];out[1]=a[1];return out};vec2.set=function(out,x,y){out[0]=x;out[1]=y;return out};vec2.add=function(out,a,b){out[0]=a[0]+b[0];out[1]=a[1]+b[1];return out};vec2.sub=vec2.subtract=function(out,a,b){out[0]=a[0]-b[0];out[1]=a[1]-b[1];return out};vec2.mul=vec2.multiply=function(out,a,b){out[0]=a[0]*b[0];out[1]=a[1]*b[1];return out};vec2.div=vec2.divide=function(out,a,b){out[0]=a[0]/b[0];out[1]=a[1]/b[1];return out};vec2.min=function(out,a,b){out[0]=Math.min(a[0],b[0]);out[1]=Math.min(a[1],b[1]);return out};vec2.max=function(out,a,b){out[0]=Math.max(a[0],b[0]);out[1]=Math.max(a[1],b[1]);return out};vec2.scale=function(out,a,b){out[0]=a[0]*b;out[1]=a[1]*b;return out};vec2.dist=vec2.distance=function(a,b){var x=b[0]-a[0],y=b[1]-a[1];return Math.sqrt(x*x+y*y)};vec2.sqrDist=vec2.squaredDistance=function(a,b){var x=b[0]-a[0],y=b[1]-a[1];return x*x+y*y};vec2.len=vec2.length=function(a){var x=a[0],y=a[1];return Math.sqrt(x*x+y*y)};vec2.sqrLen=vec2.squaredLength=function(a){var x=a[0],y=a[1];return x*x+y*y};vec2.negate=function(out,a){out[0]=-a[0];out[1]=-a[1];return out};vec2.normalize=function(out,a){var x=a[0],y=a[1];var len=x*x+y*y;if(len>0){len=1/Math.sqrt(len);out[0]=a[0]*len;out[1]=a[1]*len}return out};vec2.dot=function(a,b){return a[0]*b[0]+a[1]*b[1]};vec2.cross=function(out,a,b){var z=a[0]*b[1]-a[1]*b[0];out[0]=out[1]=0;out[2]=z;return out};vec2.lerp=function(out,a,b,t){var ax=a[0],ay=a[1];out[0]=ax+t*(b[0]-ax);out[1]=ay+t*(b[1]-ay);return out};vec2.transformMat2=function(out,a,m){var x=a[0],y=a[1];out[0]=x*m[0]+y*m[1];out[1]=x*m[2]+y*m[3];return out};vec2.forEach=function(){var vec=new Float32Array(2);return function(a,stride,offset,count,fn,arg){var i,l;if(!stride){stride=2}if(!offset){offset=0}if(count){l=Math.min(count*stride+offset,a.length)}else{l=a.length}for(i=offset;i<l;i+=stride){vec[0]=a[i];vec[1]=a[i+1];fn(vec,vec,arg);a[i]=vec[0];a[i+1]=vec[1]}return a}}();vec2.str=function(a){return"vec2("+a[0]+", "+a[1]+")"};if(typeof exports!=="undefined"){exports.vec2=vec2}var vec3={};if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}vec3.create=function(){return new Float32Array(3)};vec3.clone=function(a){var out=new Float32Array(3);out[0]=a[0];out[1]=a[1];out[2]=a[2];return out};vec3.fromValues=function(x,y,z){var out=new Float32Array(3);out[0]=x;out[1]=y;out[2]=z;return out};vec3.copy=function(out,a){out[0]=a[0];out[1]=a[1];out[2]=a[2];return out};vec3.set=function(out,x,y,z){out[0]=x;out[1]=y;out[2]=z;return out};vec3.add=function(out,a,b){out[0]=a[0]+b[0];out[1]=a[1]+b[1];out[2]=a[2]+b[2];return out};vec3.sub=vec3.subtract=function(out,a,b){out[0]=a[0]-b[0];out[1]=a[1]-b[1];out[2]=a[2]-b[2];return out};vec3.mul=vec3.multiply=function(out,a,b){out[0]=a[0]*b[0];out[1]=a[1]*b[1];out[2]=a[2]*b[2];return out};vec3.div=vec3.divide=function(out,a,b){out[0]=a[0]/b[0];out[1]=a[1]/b[1];out[2]=a[2]/b[2];return out};vec3.min=function(out,a,b){out[0]=Math.min(a[0],b[0]);out[1]=Math.min(a[1],b[1]);out[2]=Math.min(a[2],b[2]);return out};vec3.max=function(out,a,b){out[0]=Math.max(a[0],b[0]);out[1]=Math.max(a[1],b[1]);out[2]=Math.max(a[2],b[2]);return out};vec3.scale=function(out,a,b){out[0]=a[0]*b;out[1]=a[1]*b;out[2]=a[2]*b;return out};vec3.dist=vec3.distance=function(a,b){var x=b[0]-a[0],y=b[1]-a[1],z=b[2]-a[2];return Math.sqrt(x*x+y*y+z*z)};vec3.sqrDist=vec3.squaredDistance=function(a,b){var x=b[0]-a[0],y=b[1]-a[1],z=b[2]-a[2];return x*x+y*y+z*z};vec3.len=vec3.length=function(a){var x=a[0],y=a[1],z=a[2];return Math.sqrt(x*x+y*y+z*z)};vec3.sqrLen=vec3.squaredLength=function(a){var x=a[0],y=a[1],z=a[2];return x*x+y*y+z*z};vec3.negate=function(out,a){out[0]=-a[0];out[1]=-a[1];out[2]=-a[2];return out};vec3.normalize=function(out,a){var x=a[0],y=a[1],z=a[2];var len=x*x+y*y+z*z;if(len>0){len=1/Math.sqrt(len);out[0]=a[0]*len;out[1]=a[1]*len;out[2]=a[2]*len}return out};vec3.dot=function(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]};vec3.cross=function(out,a,b){var ax=a[0],ay=a[1],az=a[2],bx=b[0],by=b[1],bz=b[2];out[0]=ay*bz-az*by;out[1]=az*bx-ax*bz;out[2]=ax*by-ay*bx;return out};vec3.lerp=function(out,a,b,t){var ax=a[0],ay=a[1],az=a[2];out[0]=ax+t*(b[0]-ax);out[1]=ay+t*(b[1]-ay);out[2]=az+t*(b[2]-az);return out};vec3.transformMat4=function(out,a,m){var x=a[0],y=a[1],z=a[2];out[0]=m[0]*x+m[4]*y+m[8]*z+m[12];out[1]=m[1]*x+m[5]*y+m[9]*z+m[13];out[2]=m[2]*x+m[6]*y+m[10]*z+m[14];return out};vec3.transformQuat=function(out,a,q){var x=a[0],y=a[1],z=a[2],qx=q[0],qy=q[1],qz=q[2],qw=q[3],ix=qw*x+qy*z-qz*y,iy=qw*y+qz*x-qx*z,iz=qw*z+qx*y-qy*x,iw=-qx*x-qy*y-qz*z;out[0]=ix*qw+iw*-qx+iy*-qz-iz*-qy;out[1]=iy*qw+iw*-qy+iz*-qx-ix*-qz;out[2]=iz*qw+iw*-qz+ix*-qy-iy*-qx;return out};vec3.forEach=function(){var vec=new Float32Array(3);return function(a,stride,offset,count,fn,arg){var i,l;if(!stride){stride=3}if(!offset){offset=0}if(count){l=Math.min(count*stride+offset,a.length)}else{l=a.length}for(i=offset;i<l;i+=stride){vec[0]=a[i];vec[1]=a[i+1];vec[2]=a[i+2];fn(vec,vec,arg);a[i]=vec[0];a[i+1]=vec[1];a[i+2]=vec[2]}return a}}();vec3.str=function(a){return"vec3("+a[0]+", "+a[1]+", "+a[2]+")"};if(typeof exports!=="undefined"){exports.vec3=vec3}var vec4={};if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}vec4.create=function(){return new Float32Array(4)};vec4.clone=function(a){var out=new Float32Array(4);out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];return out};vec4.fromValues=function(x,y,z,w){var out=new Float32Array(4);out[0]=x;out[1]=y;out[2]=z;out[3]=w;return out};vec4.copy=function(out,a){out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];return out};vec4.set=function(out,x,y,z,w){out[0]=x;out[1]=y;out[2]=z;out[3]=w;return out};vec4.add=function(out,a,b){out[0]=a[0]+b[0];out[1]=a[1]+b[1];out[2]=a[2]+b[2];out[3]=a[3]+b[3];return out};vec4.sub=vec4.subtract=function(out,a,b){out[0]=a[0]-b[0];out[1]=a[1]-b[1];out[2]=a[2]-b[2];out[3]=a[3]-b[3];return out};vec4.mul=vec4.multiply=function(out,a,b){out[0]=a[0]*b[0];out[1]=a[1]*b[1];out[2]=a[2]*b[2];out[3]=a[3]*b[3];return out};vec4.div=vec4.divide=function(out,a,b){out[0]=a[0]/b[0];out[1]=a[1]/b[1];out[2]=a[2]/b[2];out[3]=a[3]/b[3];return out};vec4.min=function(out,a,b){out[0]=Math.min(a[0],b[0]);out[1]=Math.min(a[1],b[1]);out[2]=Math.min(a[2],b[2]);out[3]=Math.min(a[3],b[3]);return out};vec4.max=function(out,a,b){out[0]=Math.max(a[0],b[0]);out[1]=Math.max(a[1],b[1]);out[2]=Math.max(a[2],b[2]);out[3]=Math.max(a[3],b[3]);return out};vec4.scale=function(out,a,b){out[0]=a[0]*b;out[1]=a[1]*b;out[2]=a[2]*b;out[3]=a[3]*b;return out};vec4.dist=vec4.distance=function(a,b){var x=b[0]-a[0],y=b[1]-a[1],z=b[2]-a[2],w=b[3]-a[3];return Math.sqrt(x*x+y*y+z*z+w*w)};vec4.sqrDist=vec4.squaredDistance=function(a,b){var x=b[0]-a[0],y=b[1]-a[1],z=b[2]-a[2],w=b[3]-a[3];return x*x+y*y+z*z+w*w};vec4.len=vec4.length=function(a){var x=a[0],y=a[1],z=a[2],w=a[3];return Math.sqrt(x*x+y*y+z*z+w*w)};vec4.sqrLen=vec4.squaredLength=function(a){var x=a[0],y=a[1],z=a[2],w=a[3];return x*x+y*y+z*z+w*w};vec4.negate=function(out,a){out[0]=-a[0];out[1]=-a[1];out[2]=-a[2];out[3]=-a[3];return out};vec4.normalize=function(out,a){var x=a[0],y=a[1],z=a[2],w=a[3];var len=x*x+y*y+z*z+w*w;if(len>0){len=1/Math.sqrt(len);out[0]=a[0]*len;out[1]=a[1]*len;out[2]=a[2]*len;out[3]=a[3]*len}return out};vec4.dot=function(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]};vec4.lerp=function(out,a,b,t){var ax=a[0],ay=a[1],az=a[2],aw=a[3];out[0]=ax+t*(b[0]-ax);out[1]=ay+t*(b[1]-ay);out[2]=az+t*(b[2]-az);out[3]=aw+t*(b[3]-aw);return out};vec4.transformMat4=function(out,a,m){var x=a[0],y=a[1],z=a[2],w=a[3];out[0]=m[0]*x+m[4]*y+m[8]*z+m[12]*w;out[1]=m[1]*x+m[5]*y+m[9]*z+m[13]*w;out[2]=m[2]*x+m[6]*y+m[10]*z+m[14]*w;out[3]=m[3]*x+m[7]*y+m[11]*z+m[15]*w;return out};vec4.transformQuat=function(out,a,q){var x=a[0],y=a[1],z=a[2],qx=q[0],qy=q[1],qz=q[2],qw=q[3],ix=qw*x+qy*z-qz*y,iy=qw*y+qz*x-qx*z,iz=qw*z+qx*y-qy*x,iw=-qx*x-qy*y-qz*z;out[0]=ix*qw+iw*-qx+iy*-qz-iz*-qy;out[1]=iy*qw+iw*-qy+iz*-qx-ix*-qz;out[2]=iz*qw+iw*-qz+ix*-qy-iy*-qx;return out};vec4.forEach=function(){var vec=new Float32Array(4);return function(a,stride,offset,count,fn,arg){var i,l;if(!stride){stride=4}if(!offset){offset=0}if(count){l=Math.min(count*stride+offset,a.length)}else{l=a.length}for(i=offset;i<l;i+=stride){vec[0]=a[i];vec[1]=a[i+1];vec[2]=a[i+2];vec[3]=a[i+3];fn(vec,vec,arg);a[i]=vec[0];a[i+1]=vec[1];a[i+2]=vec[2];a[i+3]=vec[3]}return a}}();vec4.str=function(a){return"vec4("+a[0]+", "+a[1]+", "+a[2]+", "+a[3]+")"};if(typeof exports!=="undefined"){exports.vec4=vec4}var mat2={};var mat2Identity=new Float32Array([1,0,0,1]);if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}mat2.create=function(){return new Float32Array(mat2Identity)};mat2.clone=function(a){var out=new Float32Array(4);out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];return out};mat2.copy=function(out,a){out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];return out};mat2.identity=function(out){out[0]=1;out[1]=0;out[2]=0;out[3]=1;return out};mat2.transpose=function(out,a){if(out===a){var a1=a[1];out[1]=a[2];out[2]=a1}else{out[0]=a[0];out[1]=a[2];out[2]=a[1];out[3]=a[3]}return out};mat2.invert=function(out,a){var a0=a[0],a1=a[1],a2=a[2],a3=a[3],det=a0*a3-a2*a1;if(!det){return null}det=1/det;out[0]=a3*det;out[1]=-a1*det;out[2]=-a2*det;out[3]=a0*det;return out};mat2.adjoint=function(out,a){var a0=a[0];out[0]=a[3];out[1]=-a[1];out[2]=-a[2];out[3]=a0;return out};mat2.determinant=function(a){return a[0]*a[3]-a[2]*a[1]};mat2.mul=mat2.multiply=function(out,a,b){var a0=a[0],a1=a[1],a2=a[2],a3=a[3];var b0=b[0],b1=b[1],b2=b[2],b3=b[3];out[0]=a0*b0+a1*b2;out[1]=a0*b1+a1*b3;out[2]=a2*b0+a3*b2;out[3]=a2*b1+a3*b3;return out};mat2.rotate=function(out,a,rad){var a0=a[0],a1=a[1],a2=a[2],a3=a[3],s=Math.sin(rad),c=Math.cos(rad);out[0]=a0*c+a1*s;out[1]=a0*-s+a1*c;out[2]=a2*c+a3*s;out[3]=a2*-s+a3*c;return out};mat2.scale=function(out,a,v){var a0=a[0],a1=a[1],a2=a[2],a3=a[3],v0=v[0],v1=v[1];out[0]=a0*v0;out[1]=a1*v1;out[2]=a2*v0;out[3]=a3*v1;return out};mat2.str=function(a){return"mat2("+a[0]+", "+a[1]+", "+a[2]+", "+a[3]+")"};if(typeof exports!=="undefined"){exports.mat2=mat2}var mat3={};var mat3Identity=new Float32Array([1,0,0,0,1,0,0,0,1]);if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}mat3.create=function(){return new Float32Array(mat3Identity)};mat3.clone=function(a){var out=new Float32Array(9);out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];out[4]=a[4];out[5]=a[5];out[6]=a[6];out[7]=a[7];out[8]=a[8];return out};mat3.copy=function(out,a){out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];out[4]=a[4];out[5]=a[5];out[6]=a[6];out[7]=a[7];out[8]=a[8];return out};mat3.identity=function(out){out[0]=1;out[1]=0;out[2]=0;out[3]=0;out[4]=1;out[5]=0;out[6]=0;out[7]=0;out[8]=1;return out};mat3.transpose=function(out,a){if(out===a){var a01=a[1],a02=a[2],a12=a[5];out[1]=a[3];out[2]=a[6];out[3]=a01;out[5]=a[7];out[6]=a02;out[7]=a12}else{out[0]=a[0];out[1]=a[3];out[2]=a[6];out[3]=a[1];out[4]=a[4];out[5]=a[7];out[6]=a[2];out[7]=a[5];out[8]=a[8]}return out};mat3.invert=function(out,a){var a00=a[0],a01=a[1],a02=a[2],a10=a[3],a11=a[4],a12=a[5],a20=a[6],a21=a[7],a22=a[8],b01=a22*a11-a12*a21,b11=-a22*a10+a12*a20,b21=a21*a10-a11*a20,det=a00*b01+a01*b11+a02*b21;if(!det){return null}det=1/det;out[0]=b01*det;out[1]=(-a22*a01+a02*a21)*det;out[2]=(a12*a01-a02*a11)*det;out[3]=b11*det;out[4]=(a22*a00-a02*a20)*det;out[5]=(-a12*a00+a02*a10)*det;out[6]=b21*det;out[7]=(-a21*a00+a01*a20)*det;out[8]=(a11*a00-a01*a10)*det;return out};mat3.adjoint=function(out,a){var a00=a[0],a01=a[1],a02=a[2],a10=a[3],a11=a[4],a12=a[5],a20=a[6],a21=a[7],a22=a[8];out[0]=a11*a22-a12*a21;out[1]=a02*a21-a01*a22;out[2]=a01*a12-a02*a11;out[3]=a12*a20-a10*a22;out[4]=a00*a22-a02*a20;out[5]=a02*a10-a00*a12;out[6]=a10*a21-a11*a20;out[7]=a01*a20-a00*a21;out[8]=a00*a11-a01*a10;return out};mat3.determinant=function(a){var a00=a[0],a01=a[1],a02=a[2],a10=a[3],a11=a[4],a12=a[5],a20=a[6],a21=a[7],a22=a[8];return a00*(a22*a11-a12*a21)+a01*(-a22*a10+a12*a20)+a02*(a21*a10-a11*a20)};mat3.mul=mat3.multiply=function(out,a,b){var a00=a[0],a01=a[1],a02=a[2],a10=a[3],a11=a[4],a12=a[5],a20=a[6],a21=a[7],a22=a[8],b00=b[0],b01=b[1],b02=b[2],b10=b[3],b11=b[4],b12=b[5],b20=b[6],b21=b[7],b22=b[8];out[0]=b00*a00+b01*a10+b02*a20;out[1]=b00*a01+b01*a11+b02*a21;out[2]=b00*a02+b01*a12+b02*a22;out[3]=b10*a00+b11*a10+b12*a20;out[4]=b10*a01+b11*a11+b12*a21;out[5]=b10*a02+b11*a12+b12*a22;out[6]=b20*a00+b21*a10+b22*a20;out[7]=b20*a01+b21*a11+b22*a21;out[8]=b20*a02+b21*a12+b22*a22;return out};mat3.str=function(a){return"mat3("+a[0]+", "+a[1]+", "+a[2]+", "+a[3]+", "+a[4]+", "+a[5]+", "+a[6]+", "+a[7]+", "+a[8]+")"};if(typeof exports!=="undefined"){exports.mat3=mat3}var mat4={};var mat4Identity=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}mat4.create=function(){return new Float32Array(mat4Identity)};mat4.clone=function(a){var out=new Float32Array(16);out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];out[4]=a[4];out[5]=a[5];out[6]=a[6];out[7]=a[7];out[8]=a[8];out[9]=a[9];out[10]=a[10];out[11]=a[11];out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15];return out};mat4.copy=function(out,a){out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];out[4]=a[4];out[5]=a[5];out[6]=a[6];out[7]=a[7];out[8]=a[8];out[9]=a[9];out[10]=a[10];out[11]=a[11];out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15];return out};mat4.identity=function(out){out[0]=1;out[1]=0;out[2]=0;out[3]=0;out[4]=0;out[5]=1;out[6]=0;out[7]=0;out[8]=0;out[9]=0;out[10]=1;out[11]=0;out[12]=0;out[13]=0;out[14]=0;out[15]=1;return out};mat4.transpose=function(out,a){if(out===a){var a01=a[1],a02=a[2],a03=a[3],a12=a[6],a13=a[7],a23=a[11];out[1]=a[4];out[2]=a[8];out[3]=a[12];out[4]=a01;out[6]=a[9];out[7]=a[13];out[8]=a02;out[9]=a12;out[11]=a[14];out[12]=a03;out[13]=a13;out[14]=a23}else{out[0]=a[0];out[1]=a[4];out[2]=a[8];out[3]=a[12];out[4]=a[1];out[5]=a[5];out[6]=a[9];out[7]=a[13];out[8]=a[2];out[9]=a[6];out[10]=a[10];out[11]=a[14];out[12]=a[3];out[13]=a[7];out[14]=a[11];out[15]=a[15]}return out};mat4.invert=function(out,a){var a00=a[0],a01=a[1],a02=a[2],a03=a[3],a10=a[4],a11=a[5],a12=a[6],a13=a[7],a20=a[8],a21=a[9],a22=a[10],a23=a[11],a30=a[12],a31=a[13],a32=a[14],a33=a[15],b00=a00*a11-a01*a10,b01=a00*a12-a02*a10,b02=a00*a13-a03*a10,b03=a01*a12-a02*a11,b04=a01*a13-a03*a11,b05=a02*a13-a03*a12,b06=a20*a31-a21*a30,b07=a20*a32-a22*a30,b08=a20*a33-a23*a30,b09=a21*a32-a22*a31,b10=a21*a33-a23*a31,b11=a22*a33-a23*a32,det=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06;if(!det){return null}det=1/det;out[0]=(a11*b11-a12*b10+a13*b09)*det;out[1]=(a02*b10-a01*b11-a03*b09)*det;out[2]=(a31*b05-a32*b04+a33*b03)*det;out[3]=(a22*b04-a21*b05-a23*b03)*det;out[4]=(a12*b08-a10*b11-a13*b07)*det;out[5]=(a00*b11-a02*b08+a03*b07)*det;out[6]=(a32*b02-a30*b05-a33*b01)*det;out[7]=(a20*b05-a22*b02+a23*b01)*det;out[8]=(a10*b10-a11*b08+a13*b06)*det;out[9]=(a01*b08-a00*b10-a03*b06)*det;out[10]=(a30*b04-a31*b02+a33*b00)*det;out[11]=(a21*b02-a20*b04-a23*b00)*det;out[12]=(a11*b07-a10*b09-a12*b06)*det;out[13]=(a00*b09-a01*b07+a02*b06)*det;out[14]=(a31*b01-a30*b03-a32*b00)*det;out[15]=(a20*b03-a21*b01+a22*b00)*det;return out};mat4.adjoint=function(out,a){var a00=a[0],a01=a[1],a02=a[2],a03=a[3],a10=a[4],a11=a[5],a12=a[6],a13=a[7],a20=a[8],a21=a[9],a22=a[10],a23=a[11],a30=a[12],a31=a[13],a32=a[14],a33=a[15];out[0]=a11*(a22*a33-a23*a32)-a21*(a12*a33-a13*a32)+a31*(a12*a23-a13*a22);out[1]=-(a01*(a22*a33-a23*a32)-a21*(a02*a33-a03*a32)+a31*(a02*a23-a03*a22));out[2]=a01*(a12*a33-a13*a32)-a11*(a02*a33-a03*a32)+a31*(a02*a13-a03*a12);out[3]=-(a01*(a12*a23-a13*a22)-a11*(a02*a23-a03*a22)+a21*(a02*a13-a03*a12));out[4]=-(a10*(a22*a33-a23*a32)-a20*(a12*a33-a13*a32)+a30*(a12*a23-a13*a22));out[5]=a00*(a22*a33-a23*a32)-a20*(a02*a33-a03*a32)+a30*(a02*a23-a03*a22);out[6]=-(a00*(a12*a33-a13*a32)-a10*(a02*a33-a03*a32)+a30*(a02*a13-a03*a12));out[7]=a00*(a12*a23-a13*a22)-a10*(a02*a23-a03*a22)+a20*(a02*a13-a03*a12);out[8]=a10*(a21*a33-a23*a31)-a20*(a11*a33-a13*a31)+a30*(a11*a23-a13*a21);out[9]=-(a00*(a21*a33-a23*a31)-a20*(a01*a33-a03*a31)+a30*(a01*a23-a03*a21));out[10]=a00*(a11*a33-a13*a31)-a10*(a01*a33-a03*a31)+a30*(a01*a13-a03*a11);out[11]=-(a00*(a11*a23-a13*a21)-a10*(a01*a23-a03*a21)+a20*(a01*a13-a03*a11));out[12]=-(a10*(a21*a32-a22*a31)-a20*(a11*a32-a12*a31)+a30*(a11*a22-a12*a21));out[13]=a00*(a21*a32-a22*a31)-a20*(a01*a32-a02*a31)+a30*(a01*a22-a02*a21);out[14]=-(a00*(a11*a32-a12*a31)-a10*(a01*a32-a02*a31)+a30*(a01*a12-a02*a11));out[15]=a00*(a11*a22-a12*a21)-a10*(a01*a22-a02*a21)+a20*(a01*a12-a02*a11);return out};mat4.determinant=function(a){var a00=a[0],a01=a[1],a02=a[2],a03=a[3],a10=a[4],a11=a[5],a12=a[6],a13=a[7],a20=a[8],a21=a[9],a22=a[10],a23=a[11],a30=a[12],a31=a[13],a32=a[14],a33=a[15],b00=a00*a11-a01*a10,b01=a00*a12-a02*a10,b02=a00*a13-a03*a10,b03=a01*a12-a02*a11,b04=a01*a13-a03*a11,b05=a02*a13-a03*a12,b06=a20*a31-a21*a30,b07=a20*a32-a22*a30,b08=a20*a33-a23*a30,b09=a21*a32-a22*a31,b10=a21*a33-a23*a31,b11=a22*a33-a23*a32;return b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06};mat4.mul=mat4.multiply=function(out,a,b){var a00=a[0],a01=a[1],a02=a[2],a03=a[3],a10=a[4],a11=a[5],a12=a[6],a13=a[7],a20=a[8],a21=a[9],a22=a[10],a23=a[11],a30=a[12],a31=a[13],a32=a[14],a33=a[15];var b0=b[0],b1=b[1],b2=b[2],b3=b[3];out[0]=b0*a00+b1*a10+b2*a20+b3*a30;out[1]=b0*a01+b1*a11+b2*a21+b3*a31;out[2]=b0*a02+b1*a12+b2*a22+b3*a32;out[3]=b0*a03+b1*a13+b2*a23+b3*a33;b0=b[4];b1=b[5];b2=b[6];b3=b[7];out[4]=b0*a00+b1*a10+b2*a20+b3*a30;out[5]=b0*a01+b1*a11+b2*a21+b3*a31;out[6]=b0*a02+b1*a12+b2*a22+b3*a32;out[7]=b0*a03+b1*a13+b2*a23+b3*a33;b0=b[8];b1=b[9];b2=b[10];b3=b[11];out[8]=b0*a00+b1*a10+b2*a20+b3*a30;out[9]=b0*a01+b1*a11+b2*a21+b3*a31;out[10]=b0*a02+b1*a12+b2*a22+b3*a32;out[11]=b0*a03+b1*a13+b2*a23+b3*a33;b0=b[12];b1=b[13];b2=b[14];b3=b[15];out[12]=b0*a00+b1*a10+b2*a20+b3*a30;out[13]=b0*a01+b1*a11+b2*a21+b3*a31;out[14]=b0*a02+b1*a12+b2*a22+b3*a32;out[15]=b0*a03+b1*a13+b2*a23+b3*a33;return out};mat4.translate=function(out,a,v){var x=v[0],y=v[1],z=v[2],a00,a01,a02,a03,a10,a11,a12,a13,a20,a21,a22,a23;if(a===out){out[12]=a[0]*x+a[4]*y+a[8]*z+a[12];out[13]=a[1]*x+a[5]*y+a[9]*z+a[13];out[14]=a[2]*x+a[6]*y+a[10]*z+a[14];out[15]=a[3]*x+a[7]*y+a[11]*z+a[15]}else{a00=a[0];a01=a[1];a02=a[2];a03=a[3];a10=a[4];a11=a[5];a12=a[6];a13=a[7];a20=a[8];a21=a[9];a22=a[10];a23=a[11];out[0]=a00;out[1]=a01;out[2]=a02;out[3]=a03;out[4]=a10;out[5]=a11;out[6]=a12;out[7]=a13;out[8]=a20;out[9]=a21;out[10]=a22;out[11]=a23;out[12]=a00*x+a10*y+a20*z+a[12];out[13]=a01*x+a11*y+a21*z+a[13];out[14]=a02*x+a12*y+a22*z+a[14];out[15]=a03*x+a13*y+a23*z+a[15]}return out};mat4.scale=function(out,a,v){var x=v[0],y=v[1],z=v[2];out[0]=a[0]*x;out[1]=a[1]*x;out[2]=a[2]*x;out[3]=a[3]*x;out[4]=a[4]*y;out[5]=a[5]*y;out[6]=a[6]*y;out[7]=a[7]*y;out[8]=a[8]*z;out[9]=a[9]*z;out[10]=a[10]*z;out[11]=a[11]*z;out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15];return out};mat4.rotate=function(out,a,rad,axis){var x=axis[0],y=axis[1],z=axis[2],len=Math.sqrt(x*x+y*y+z*z),s,c,t,a00,a01,a02,a03,a10,a11,a12,a13,a20,a21,a22,a23,b00,b01,b02,b10,b11,b12,b20,b21,b22;if(Math.abs(len)<GLMAT_EPSILON){return null}len=1/len;x*=len;y*=len;z*=len;s=Math.sin(rad);c=Math.cos(rad);t=1-c;a00=a[0];a01=a[1];a02=a[2];a03=a[3];a10=a[4];a11=a[5];a12=a[6];a13=a[7];a20=a[8];a21=a[9];a22=a[10];a23=a[11];b00=x*x*t+c;b01=y*x*t+z*s;b02=z*x*t-y*s;b10=x*y*t-z*s;b11=y*y*t+c;b12=z*y*t+x*s;b20=x*z*t+y*s;b21=y*z*t-x*s;b22=z*z*t+c;out[0]=a00*b00+a10*b01+a20*b02;out[1]=a01*b00+a11*b01+a21*b02;out[2]=a02*b00+a12*b01+a22*b02;out[3]=a03*b00+a13*b01+a23*b02;out[4]=a00*b10+a10*b11+a20*b12;out[5]=a01*b10+a11*b11+a21*b12;out[6]=a02*b10+a12*b11+a22*b12;out[7]=a03*b10+a13*b11+a23*b12;out[8]=a00*b20+a10*b21+a20*b22;out[9]=a01*b20+a11*b21+a21*b22;out[10]=a02*b20+a12*b21+a22*b22;out[11]=a03*b20+a13*b21+a23*b22;if(a!==out){out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15]}return out};mat4.rotateX=function(out,a,rad){var s=Math.sin(rad),c=Math.cos(rad),a10=a[4],a11=a[5],a12=a[6],a13=a[7],a20=a[8],a21=a[9],a22=a[10],a23=a[11];if(a!==out){out[0]=a[0];out[1]=a[1];out[2]=a[2];out[3]=a[3];out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15]}out[4]=a10*c+a20*s;out[5]=a11*c+a21*s;out[6]=a12*c+a22*s;out[7]=a13*c+a23*s;out[8]=a20*c-a10*s;out[9]=a21*c-a11*s;out[10]=a22*c-a12*s;out[11]=a23*c-a13*s;return out};mat4.rotateY=function(out,a,rad){var s=Math.sin(rad),c=Math.cos(rad),a00=a[0],a01=a[1],a02=a[2],a03=a[3],a20=a[8],a21=a[9],a22=a[10],a23=a[11];if(a!==out){out[4]=a[4];out[5]=a[5];out[6]=a[6];out[7]=a[7];out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15]}out[0]=a00*c-a20*s;out[1]=a01*c-a21*s;out[2]=a02*c-a22*s;out[3]=a03*c-a23*s;out[8]=a00*s+a20*c;out[9]=a01*s+a21*c;out[10]=a02*s+a22*c;out[11]=a03*s+a23*c;return out};mat4.rotateZ=function(out,a,rad){var s=Math.sin(rad),c=Math.cos(rad),a00=a[0],a01=a[1],a02=a[2],a03=a[3],a10=a[4],a11=a[5],a12=a[6],a13=a[7];if(a!==out){out[8]=a[8];out[9]=a[9];out[10]=a[10];out[11]=a[11];out[12]=a[12];out[13]=a[13];out[14]=a[14];out[15]=a[15]}out[0]=a00*c+a10*s;out[1]=a01*c+a11*s;out[2]=a02*c+a12*s;out[3]=a03*c+a13*s;out[4]=a10*c-a00*s;out[5]=a11*c-a01*s;out[6]=a12*c-a02*s;out[7]=a13*c-a03*s;return out};mat4.fromRotationTranslation=function(out,q,v){var x=q[0],y=q[1],z=q[2],w=q[3],x2=x+x,y2=y+y,z2=z+z,xx=x*x2,xy=x*y2,xz=x*z2,yy=y*y2,yz=y*z2,zz=z*z2,wx=w*x2,wy=w*y2,wz=w*z2;out[0]=1-(yy+zz);out[1]=xy+wz;out[2]=xz-wy;out[3]=0;out[4]=xy-wz;out[5]=1-(xx+zz);out[6]=yz+wx;out[7]=0;out[8]=xz+wy;out[9]=yz-wx;out[10]=1-(xx+yy);out[11]=0;out[12]=v[0];out[13]=v[1];out[14]=v[2];out[15]=1;return out};mat4.frustum=function(out,left,right,bottom,top,near,far){var rl=1/(right-left),tb=1/(top-bottom),nf=1/(near-far);out[0]=near*2*rl;out[1]=0;out[2]=0;out[3]=0;out[4]=0;out[5]=near*2*tb;out[6]=0;out[7]=0;out[8]=(right+left)*rl;out[9]=(top+bottom)*tb;out[10]=(far+near)*nf;out[11]=-1;out[12]=0;out[13]=0;out[14]=far*near*2*nf;out[15]=0;return out};mat4.perspective=function(out,fovy,aspect,near,far){var f=1/Math.tan(fovy/2),nf=1/(near-far);out[0]=f/aspect;out[1]=0;out[2]=0;out[3]=0;out[4]=0;out[5]=f;out[6]=0;out[7]=0;out[8]=0;out[9]=0;out[10]=(far+near)*nf;out[11]=-1;out[12]=0;out[13]=0;out[14]=2*far*near*nf;out[15]=0;return out};mat4.ortho=function(out,left,right,bottom,top,near,far){var lr=1/(left-right),bt=1/(bottom-top),nf=1/(near-far);out[0]=-2*lr;out[1]=0;out[2]=0;out[3]=0;out[4]=0;out[5]=-2*bt;out[6]=0;out[7]=0;out[8]=0;out[9]=0;out[10]=2*nf;out[11]=0;out[12]=(left+right)*lr;out[13]=(top+bottom)*bt;out[14]=(far+near)*nf;out[15]=1;return out};mat4.lookAt=function(out,eye,center,up){var x0,x1,x2,y0,y1,y2,z0,z1,z2,len,eyex=eye[0],eyey=eye[1],eyez=eye[2],upx=up[0],upy=up[1],upz=up[2],centerx=center[0],centery=center[1],centerz=center[2];if(Math.abs(eyex-centerx)<GLMAT_EPSILON&&Math.abs(eyey-centery)<GLMAT_EPSILON&&Math.abs(eyez-centerz)<GLMAT_EPSILON){return mat4.identity(out)}z0=eyex-centerx;z1=eyey-centery;z2=eyez-centerz;len=1/Math.sqrt(z0*z0+z1*z1+z2*z2);z0*=len;z1*=len;z2*=len;x0=upy*z2-upz*z1;x1=upz*z0-upx*z2;x2=upx*z1-upy*z0;len=Math.sqrt(x0*x0+x1*x1+x2*x2);if(!len){x0=0;x1=0;x2=0}else{len=1/len;x0*=len;x1*=len;x2*=len}y0=z1*x2-z2*x1;y1=z2*x0-z0*x2;y2=z0*x1-z1*x0;len=Math.sqrt(y0*y0+y1*y1+y2*y2);if(!len){y0=0;y1=0;y2=0}else{len=1/len;y0*=len;y1*=len;y2*=len}out[0]=x0;out[1]=y0;out[2]=z0;out[3]=0;out[4]=x1;out[5]=y1;out[6]=z1;out[7]=0;out[8]=x2;out[9]=y2;out[10]=z2;out[11]=0;out[12]=-(x0*eyex+x1*eyey+x2*eyez);out[13]=-(y0*eyex+y1*eyey+y2*eyez);out[14]=-(z0*eyex+z1*eyey+z2*eyez);out[15]=1;return out};mat4.str=function(a){return"mat4("+a[0]+", "+a[1]+", "+a[2]+", "+a[3]+", "+a[4]+", "+a[5]+", "+a[6]+", "+a[7]+", "+a[8]+", "+a[9]+", "+a[10]+", "+a[11]+", "+a[12]+", "+a[13]+", "+a[14]+", "+a[15]+")"};if(typeof exports!=="undefined"){exports.mat4=mat4}var quat={};var quatIdentity=new Float32Array([0,0,0,1]);if(!GLMAT_EPSILON){var GLMAT_EPSILON=1e-6}quat.create=function(){return new Float32Array(quatIdentity)};quat.clone=vec4.clone;quat.fromValues=vec4.fromValues;quat.copy=vec4.copy;quat.set=vec4.set;quat.identity=function(out){out[0]=0;out[1]=0;out[2]=0;out[3]=1;return out};quat.setAxisAngle=function(out,axis,rad){rad=rad*.5;var s=Math.sin(rad);out[0]=s*axis[0];out[1]=s*axis[1];out[2]=s*axis[2];out[3]=Math.cos(rad);return out};quat.add=vec4.add;quat.mul=quat.multiply=function(out,a,b){var ax=a[0],ay=a[1],az=a[2],aw=a[3],bx=b[0],by=b[1],bz=b[2],bw=b[3];out[0]=ax*bw+aw*bx+ay*bz-az*by;out[1]=ay*bw+aw*by+az*bx-ax*bz;out[2]=az*bw+aw*bz+ax*by-ay*bx;out[3]=aw*bw-ax*bx-ay*by-az*bz;return out};quat.scale=vec4.scale;quat.rotateX=function(out,a,rad){rad*=.5;var ax=a[0],ay=a[1],az=a[2],aw=a[3],bx=Math.sin(rad),bw=Math.cos(rad);out[0]=ax*bw+aw*bx;out[1]=ay*bw+az*bx;out[2]=az*bw-ay*bx;out[3]=aw*bw-ax*bx;return out};quat.rotateY=function(out,a,rad){rad*=.5;var ax=a[0],ay=a[1],az=a[2],aw=a[3],by=Math.sin(rad),bw=Math.cos(rad);out[0]=ax*bw-az*by;out[1]=ay*bw+aw*by;out[2]=az*bw+ax*by;out[3]=aw*bw-ay*by;return out};quat.rotateZ=function(out,a,rad){rad*=.5;var ax=a[0],ay=a[1],az=a[2],aw=a[3],bz=Math.sin(rad),bw=Math.cos(rad);out[0]=ax*bw+ay*bz;out[1]=ay*bw-ax*bz;out[2]=az*bw+aw*bz;out[3]=aw*bw-az*bz;return out};quat.calculateW=function(out,a){var x=a[0],y=a[1],z=a[2];out[0]=x;out[1]=y;out[2]=z;out[3]=-Math.sqrt(Math.abs(1-x*x-y*y-z*z));return out};quat.dot=vec4.dot;quat.lerp=vec4.lerp;quat.slerp=function(out,a,b,t){var ax=a[0],ay=a[1],az=a[2],aw=a[3],bx=b[0],by=b[1],bz=b[2],bw=a[3];var cosHalfTheta=ax*bx+ay*by+az*bz+aw*bw,halfTheta,sinHalfTheta,ratioA,ratioB;if(Math.abs(cosHalfTheta)>=1){if(out!==a){out[0]=ax;out[1]=ay;out[2]=az;out[3]=aw}return out}halfTheta=Math.acos(cosHalfTheta);sinHalfTheta=Math.sqrt(1-cosHalfTheta*cosHalfTheta);if(Math.abs(sinHalfTheta)<.001){out[0]=ax*.5+bx*.5;out[1]=ay*.5+by*.5;out[2]=az*.5+bz*.5;out[3]=aw*.5+bw*.5;return out}ratioA=Math.sin((1-t)*halfTheta)/sinHalfTheta;ratioB=Math.sin(t*halfTheta)/sinHalfTheta;out[0]=ax*ratioA+bx*ratioB;out[1]=ay*ratioA+by*ratioB;out[2]=az*ratioA+bz*ratioB;out[3]=aw*ratioA+bw*ratioB;return out};quat.invert=function(out,a){var a0=a[0],a1=a[1],a2=a[2],a3=a[3],dot=a0*a0+a1*a1+a2*a2+a3*a3,invDot=dot?1/dot:0;out[0]=-a0*invDot;out[1]=-a1*invDot;out[2]=-a2*invDot;out[3]=a3*invDot;return out};quat.conjugate=function(out,a){out[0]=-a[0];out[1]=-a[1];out[2]=-a[2];out[3]=a[3];return out};quat.len=quat.length=vec4.length;quat.sqrLen=quat.squaredLength=vec4.squaredLength;quat.normalize=vec4.normalize;quat.str=function(a){return"quat("+a[0]+", "+a[1]+", "+a[2]+", "+a[3]+")"};if(typeof exports!=="undefined"){exports.quat=quat}}(shim.exports)}()},{}],20:[function(require,module,exports){!function(){var root=this;var previousUnderscore=root._;var breaker={};var ArrayProto=Array.prototype,ObjProto=Object.prototype,FuncProto=Function.prototype;var push=ArrayProto.push,slice=ArrayProto.slice,concat=ArrayProto.concat,toString=ObjProto.toString,hasOwnProperty=ObjProto.hasOwnProperty;var nativeForEach=ArrayProto.forEach,nativeMap=ArrayProto.map,nativeReduce=ArrayProto.reduce,nativeReduceRight=ArrayProto.reduceRight,nativeFilter=ArrayProto.filter,nativeEvery=ArrayProto.every,nativeSome=ArrayProto.some,nativeIndexOf=ArrayProto.indexOf,nativeLastIndexOf=ArrayProto.lastIndexOf,nativeIsArray=Array.isArray,nativeKeys=Object.keys,nativeBind=FuncProto.bind;var _=function(obj){if(obj instanceof _)return obj;if(!(this instanceof _))return new _(obj);this._wrapped=obj};if(typeof exports!=="undefined"){if(typeof module!=="undefined"&&module.exports){exports=module.exports=_}exports._=_}else{root._=_}_.VERSION="1.4.4";var each=_.each=_.forEach=function(obj,iterator,context){if(obj==null)return;if(nativeForEach&&obj.forEach===nativeForEach){obj.forEach(iterator,context)}else if(obj.length===+obj.length){for(var i=0,l=obj.length;i<l;i++){if(iterator.call(context,obj[i],i,obj)===breaker)return}}else{for(var key in obj){if(_.has(obj,key)){if(iterator.call(context,obj[key],key,obj)===breaker)return}}}};_.map=_.collect=function(obj,iterator,context){var results=[];if(obj==null)return results;if(nativeMap&&obj.map===nativeMap)return obj.map(iterator,context);each(obj,function(value,index,list){results[results.length]=iterator.call(context,value,index,list)});return results};var reduceError="Reduce of empty array with no initial value";_.reduce=_.foldl=_.inject=function(obj,iterator,memo,context){var initial=arguments.length>2;if(obj==null)obj=[];if(nativeReduce&&obj.reduce===nativeReduce){if(context)iterator=_.bind(iterator,context);return initial?obj.reduce(iterator,memo):obj.reduce(iterator)}each(obj,function(value,index,list){if(!initial){memo=value;initial=true}else{memo=iterator.call(context,memo,value,index,list)}});if(!initial)throw new TypeError(reduceError);return memo};_.reduceRight=_.foldr=function(obj,iterator,memo,context){var initial=arguments.length>2;if(obj==null)obj=[];if(nativeReduceRight&&obj.reduceRight===nativeReduceRight){if(context)iterator=_.bind(iterator,context);return initial?obj.reduceRight(iterator,memo):obj.reduceRight(iterator)}var length=obj.length;if(length!==+length){var keys=_.keys(obj);length=keys.length}each(obj,function(value,index,list){index=keys?keys[--length]:--length;if(!initial){memo=obj[index];initial=true}else{memo=iterator.call(context,memo,obj[index],index,list)}});if(!initial)throw new TypeError(reduceError);return memo};_.find=_.detect=function(obj,iterator,context){var result;any(obj,function(value,index,list){if(iterator.call(context,value,index,list)){result=value;return true}});return result};_.filter=_.select=function(obj,iterator,context){var results=[];if(obj==null)return results;if(nativeFilter&&obj.filter===nativeFilter)return obj.filter(iterator,context);each(obj,function(value,index,list){if(iterator.call(context,value,index,list))results[results.length]=value});return results};_.reject=function(obj,iterator,context){return _.filter(obj,function(value,index,list){return!iterator.call(context,value,index,list)},context)};_.every=_.all=function(obj,iterator,context){iterator||(iterator=_.identity);var result=true;if(obj==null)return result;if(nativeEvery&&obj.every===nativeEvery)return obj.every(iterator,context);each(obj,function(value,index,list){if(!(result=result&&iterator.call(context,value,index,list)))return breaker});return!!result};var any=_.some=_.any=function(obj,iterator,context){iterator||(iterator=_.identity);var result=false;if(obj==null)return result;if(nativeSome&&obj.some===nativeSome)return obj.some(iterator,context);each(obj,function(value,index,list){if(result||(result=iterator.call(context,value,index,list)))return breaker});return!!result};_.contains=_.include=function(obj,target){if(obj==null)return false;if(nativeIndexOf&&obj.indexOf===nativeIndexOf)return obj.indexOf(target)!=-1;return any(obj,function(value){return value===target
+})};_.invoke=function(obj,method){var args=slice.call(arguments,2);var isFunc=_.isFunction(method);return _.map(obj,function(value){return(isFunc?method:value[method]).apply(value,args)})};_.pluck=function(obj,key){return _.map(obj,function(value){return value[key]})};_.where=function(obj,attrs,first){if(_.isEmpty(attrs))return first?null:[];return _[first?"find":"filter"](obj,function(value){for(var key in attrs){if(attrs[key]!==value[key])return false}return true})};_.findWhere=function(obj,attrs){return _.where(obj,attrs,true)};_.max=function(obj,iterator,context){if(!iterator&&_.isArray(obj)&&obj[0]===+obj[0]&&obj.length<65535){return Math.max.apply(Math,obj)}if(!iterator&&_.isEmpty(obj))return-Infinity;var result={computed:-Infinity,value:-Infinity};each(obj,function(value,index,list){var computed=iterator?iterator.call(context,value,index,list):value;computed>=result.computed&&(result={value:value,computed:computed})});return result.value};_.min=function(obj,iterator,context){if(!iterator&&_.isArray(obj)&&obj[0]===+obj[0]&&obj.length<65535){return Math.min.apply(Math,obj)}if(!iterator&&_.isEmpty(obj))return Infinity;var result={computed:Infinity,value:Infinity};each(obj,function(value,index,list){var computed=iterator?iterator.call(context,value,index,list):value;computed<result.computed&&(result={value:value,computed:computed})});return result.value};_.shuffle=function(obj){var rand;var index=0;var shuffled=[];each(obj,function(value){rand=_.random(index++);shuffled[index-1]=shuffled[rand];shuffled[rand]=value});return shuffled};var lookupIterator=function(value){return _.isFunction(value)?value:function(obj){return obj[value]}};_.sortBy=function(obj,value,context){var iterator=lookupIterator(value);return _.pluck(_.map(obj,function(value,index,list){return{value:value,index:index,criteria:iterator.call(context,value,index,list)}}).sort(function(left,right){var a=left.criteria;var b=right.criteria;if(a!==b){if(a>b||a===void 0)return 1;if(a<b||b===void 0)return-1}return left.index<right.index?-1:1}),"value")};var group=function(obj,value,context,behavior){var result={};var iterator=lookupIterator(value||_.identity);each(obj,function(value,index){var key=iterator.call(context,value,index,obj);behavior(result,key,value)});return result};_.groupBy=function(obj,value,context){return group(obj,value,context,function(result,key,value){(_.has(result,key)?result[key]:result[key]=[]).push(value)})};_.countBy=function(obj,value,context){return group(obj,value,context,function(result,key){if(!_.has(result,key))result[key]=0;result[key]++})};_.sortedIndex=function(array,obj,iterator,context){iterator=iterator==null?_.identity:lookupIterator(iterator);var value=iterator.call(context,obj);var low=0,high=array.length;while(low<high){var mid=low+high>>>1;iterator.call(context,array[mid])<value?low=mid+1:high=mid}return low};_.toArray=function(obj){if(!obj)return[];if(_.isArray(obj))return slice.call(obj);if(obj.length===+obj.length)return _.map(obj,_.identity);return _.values(obj)};_.size=function(obj){if(obj==null)return 0;return obj.length===+obj.length?obj.length:_.keys(obj).length};_.first=_.head=_.take=function(array,n,guard){if(array==null)return void 0;return n!=null&&!guard?slice.call(array,0,n):array[0]};_.initial=function(array,n,guard){return slice.call(array,0,array.length-(n==null||guard?1:n))};_.last=function(array,n,guard){if(array==null)return void 0;if(n!=null&&!guard){return slice.call(array,Math.max(array.length-n,0))}else{return array[array.length-1]}};_.rest=_.tail=_.drop=function(array,n,guard){return slice.call(array,n==null||guard?1:n)};_.compact=function(array){return _.filter(array,_.identity)};var flatten=function(input,shallow,output){each(input,function(value){if(_.isArray(value)){shallow?push.apply(output,value):flatten(value,shallow,output)}else{output.push(value)}});return output};_.flatten=function(array,shallow){return flatten(array,shallow,[])};_.without=function(array){return _.difference(array,slice.call(arguments,1))};_.uniq=_.unique=function(array,isSorted,iterator,context){if(_.isFunction(isSorted)){context=iterator;iterator=isSorted;isSorted=false}var initial=iterator?_.map(array,iterator,context):array;var results=[];var seen=[];each(initial,function(value,index){if(isSorted?!index||seen[seen.length-1]!==value:!_.contains(seen,value)){seen.push(value);results.push(array[index])}});return results};_.union=function(){return _.uniq(concat.apply(ArrayProto,arguments))};_.intersection=function(array){var rest=slice.call(arguments,1);return _.filter(_.uniq(array),function(item){return _.every(rest,function(other){return _.indexOf(other,item)>=0})})};_.difference=function(array){var rest=concat.apply(ArrayProto,slice.call(arguments,1));return _.filter(array,function(value){return!_.contains(rest,value)})};_.zip=function(){var args=slice.call(arguments);var length=_.max(_.pluck(args,"length"));var results=new Array(length);for(var i=0;i<length;i++){results[i]=_.pluck(args,""+i)}return results};_.object=function(list,values){if(list==null)return{};var result={};for(var i=0,l=list.length;i<l;i++){if(values){result[list[i]]=values[i]}else{result[list[i][0]]=list[i][1]}}return result};_.indexOf=function(array,item,isSorted){if(array==null)return-1;var i=0,l=array.length;if(isSorted){if(typeof isSorted=="number"){i=isSorted<0?Math.max(0,l+isSorted):isSorted}else{i=_.sortedIndex(array,item);return array[i]===item?i:-1}}if(nativeIndexOf&&array.indexOf===nativeIndexOf)return array.indexOf(item,isSorted);for(;i<l;i++)if(array[i]===item)return i;return-1};_.lastIndexOf=function(array,item,from){if(array==null)return-1;var hasIndex=from!=null;if(nativeLastIndexOf&&array.lastIndexOf===nativeLastIndexOf){return hasIndex?array.lastIndexOf(item,from):array.lastIndexOf(item)}var i=hasIndex?from:array.length;while(i--)if(array[i]===item)return i;return-1};_.range=function(start,stop,step){if(arguments.length<=1){stop=start||0;start=0}step=arguments[2]||1;var len=Math.max(Math.ceil((stop-start)/step),0);var idx=0;var range=new Array(len);while(idx<len){range[idx++]=start;start+=step}return range};_.bind=function(func,context){if(func.bind===nativeBind&&nativeBind)return nativeBind.apply(func,slice.call(arguments,1));var args=slice.call(arguments,2);return function(){return func.apply(context,args.concat(slice.call(arguments)))}};_.partial=function(func){var args=slice.call(arguments,1);return function(){return func.apply(this,args.concat(slice.call(arguments)))}};_.bindAll=function(obj){var funcs=slice.call(arguments,1);if(funcs.length===0)funcs=_.functions(obj);each(funcs,function(f){obj[f]=_.bind(obj[f],obj)});return obj};_.memoize=function(func,hasher){var memo={};hasher||(hasher=_.identity);return function(){var key=hasher.apply(this,arguments);return _.has(memo,key)?memo[key]:memo[key]=func.apply(this,arguments)}};_.delay=function(func,wait){var args=slice.call(arguments,2);return setTimeout(function(){return func.apply(null,args)},wait)};_.defer=function(func){return _.delay.apply(_,[func,1].concat(slice.call(arguments,1)))};_.throttle=function(func,wait){var context,args,timeout,result;var previous=0;var later=function(){previous=new Date;timeout=null;result=func.apply(context,args)};return function(){var now=new Date;var remaining=wait-(now-previous);context=this;args=arguments;if(remaining<=0){clearTimeout(timeout);timeout=null;previous=now;result=func.apply(context,args)}else if(!timeout){timeout=setTimeout(later,remaining)}return result}};_.debounce=function(func,wait,immediate){var timeout,result;return function(){var context=this,args=arguments;var later=function(){timeout=null;if(!immediate)result=func.apply(context,args)};var callNow=immediate&&!timeout;clearTimeout(timeout);timeout=setTimeout(later,wait);if(callNow)result=func.apply(context,args);return result}};_.once=function(func){var ran=false,memo;return function(){if(ran)return memo;ran=true;memo=func.apply(this,arguments);func=null;return memo}};_.wrap=function(func,wrapper){return function(){var args=[func];push.apply(args,arguments);return wrapper.apply(this,args)}};_.compose=function(){var funcs=arguments;return function(){var args=arguments;for(var i=funcs.length-1;i>=0;i--){args=[funcs[i].apply(this,args)]}return args[0]}};_.after=function(times,func){if(times<=0)return func();return function(){if(--times<1){return func.apply(this,arguments)}}};_.keys=nativeKeys||function(obj){if(obj!==Object(obj))throw new TypeError("Invalid object");var keys=[];for(var key in obj)if(_.has(obj,key))keys[keys.length]=key;return keys};_.values=function(obj){var values=[];for(var key in obj)if(_.has(obj,key))values.push(obj[key]);return values};_.pairs=function(obj){var pairs=[];for(var key in obj)if(_.has(obj,key))pairs.push([key,obj[key]]);return pairs};_.invert=function(obj){var result={};for(var key in obj)if(_.has(obj,key))result[obj[key]]=key;return result};_.functions=_.methods=function(obj){var names=[];for(var key in obj){if(_.isFunction(obj[key]))names.push(key)}return names.sort()};_.extend=function(obj){each(slice.call(arguments,1),function(source){if(source){for(var prop in source){obj[prop]=source[prop]}}});return obj};_.pick=function(obj){var copy={};var keys=concat.apply(ArrayProto,slice.call(arguments,1));each(keys,function(key){if(key in obj)copy[key]=obj[key]});return copy};_.omit=function(obj){var copy={};var keys=concat.apply(ArrayProto,slice.call(arguments,1));for(var key in obj){if(!_.contains(keys,key))copy[key]=obj[key]}return copy};_.defaults=function(obj){each(slice.call(arguments,1),function(source){if(source){for(var prop in source){if(obj[prop]==null)obj[prop]=source[prop]}}});return obj};_.clone=function(obj){if(!_.isObject(obj))return obj;return _.isArray(obj)?obj.slice():_.extend({},obj)};_.tap=function(obj,interceptor){interceptor(obj);return obj};var eq=function(a,b,aStack,bStack){if(a===b)return a!==0||1/a==1/b;if(a==null||b==null)return a===b;if(a instanceof _)a=a._wrapped;if(b instanceof _)b=b._wrapped;var className=toString.call(a);if(className!=toString.call(b))return false;switch(className){case"[object String]":return a==String(b);case"[object Number]":return a!=+a?b!=+b:a==0?1/a==1/b:a==+b;case"[object Date]":case"[object Boolean]":return+a==+b;case"[object RegExp]":return a.source==b.source&&a.global==b.global&&a.multiline==b.multiline&&a.ignoreCase==b.ignoreCase}if(typeof a!="object"||typeof b!="object")return false;var length=aStack.length;while(length--){if(aStack[length]==a)return bStack[length]==b}aStack.push(a);bStack.push(b);var size=0,result=true;if(className=="[object Array]"){size=a.length;result=size==b.length;if(result){while(size--){if(!(result=eq(a[size],b[size],aStack,bStack)))break}}}else{var aCtor=a.constructor,bCtor=b.constructor;if(aCtor!==bCtor&&!(_.isFunction(aCtor)&&aCtor instanceof aCtor&&_.isFunction(bCtor)&&bCtor instanceof bCtor)){return false}for(var key in a){if(_.has(a,key)){size++;if(!(result=_.has(b,key)&&eq(a[key],b[key],aStack,bStack)))break}}if(result){for(key in b){if(_.has(b,key)&&!size--)break}result=!size}}aStack.pop();bStack.pop();return result};_.isEqual=function(a,b){return eq(a,b,[],[])};_.isEmpty=function(obj){if(obj==null)return true;if(_.isArray(obj)||_.isString(obj))return obj.length===0;for(var key in obj)if(_.has(obj,key))return false;return true};_.isElement=function(obj){return!!(obj&&obj.nodeType===1)};_.isArray=nativeIsArray||function(obj){return toString.call(obj)=="[object Array]"};_.isObject=function(obj){return obj===Object(obj)};each(["Arguments","Function","String","Number","Date","RegExp"],function(name){_["is"+name]=function(obj){return toString.call(obj)=="[object "+name+"]"}});if(!_.isArguments(arguments)){_.isArguments=function(obj){return!!(obj&&_.has(obj,"callee"))}}if(typeof/./!=="function"){_.isFunction=function(obj){return typeof obj==="function"}}_.isFinite=function(obj){return isFinite(obj)&&!isNaN(parseFloat(obj))};_.isNaN=function(obj){return _.isNumber(obj)&&obj!=+obj};_.isBoolean=function(obj){return obj===true||obj===false||toString.call(obj)=="[object Boolean]"};_.isNull=function(obj){return obj===null};_.isUndefined=function(obj){return obj===void 0};_.has=function(obj,key){return hasOwnProperty.call(obj,key)};_.noConflict=function(){root._=previousUnderscore;return this};_.identity=function(value){return value};_.times=function(n,iterator,context){var accum=Array(n);for(var i=0;i<n;i++)accum[i]=iterator.call(context,i);return accum};_.random=function(min,max){if(max==null){max=min;min=0}return min+Math.floor(Math.random()*(max-min+1))};var entityMap={escape:{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#x27;","/":"&#x2F;"}};entityMap.unescape=_.invert(entityMap.escape);var entityRegexes={escape:new RegExp("["+_.keys(entityMap.escape).join("")+"]","g"),unescape:new RegExp("("+_.keys(entityMap.unescape).join("|")+")","g")};_.each(["escape","unescape"],function(method){_[method]=function(string){if(string==null)return"";return(""+string).replace(entityRegexes[method],function(match){return entityMap[method][match]})}});_.result=function(object,property){if(object==null)return null;var value=object[property];return _.isFunction(value)?value.call(object):value};_.mixin=function(obj){each(_.functions(obj),function(name){var func=_[name]=obj[name];_.prototype[name]=function(){var args=[this._wrapped];push.apply(args,arguments);return result.call(this,func.apply(_,args))}})};var idCounter=0;_.uniqueId=function(prefix){var id=++idCounter+"";return prefix?prefix+id:id};_.templateSettings={evaluate:/<%([\s\S]+?)%>/g,interpolate:/<%=([\s\S]+?)%>/g,escape:/<%-([\s\S]+?)%>/g};var noMatch=/(.)^/;var escapes={"'":"'","\\":"\\","\r":"r","\n":"n","	":"t","\u2028":"u2028","\u2029":"u2029"};var escaper=/\\|'|\r|\n|\t|\u2028|\u2029/g;_.template=function(text,data,settings){var render;settings=_.defaults({},settings,_.templateSettings);var matcher=new RegExp([(settings.escape||noMatch).source,(settings.interpolate||noMatch).source,(settings.evaluate||noMatch).source].join("|")+"|$","g");var index=0;var source="__p+='";text.replace(matcher,function(match,escape,interpolate,evaluate,offset){source+=text.slice(index,offset).replace(escaper,function(match){return"\\"+escapes[match]});if(escape){source+="'+\n((__t=("+escape+"))==null?'':_.escape(__t))+\n'"}if(interpolate){source+="'+\n((__t=("+interpolate+"))==null?'':__t)+\n'"}if(evaluate){source+="';\n"+evaluate+"\n__p+='"}index=offset+match.length;return match});source+="';\n";if(!settings.variable)source="with(obj||{}){\n"+source+"}\n";source="var __t,__p='',__j=Array.prototype.join,"+"print=function(){__p+=__j.call(arguments,'');};\n"+source+"return __p;\n";try{render=new Function(settings.variable||"obj","_",source)}catch(e){e.source=source;throw e}if(data)return render(data,_);var template=function(data){return render.call(this,data,_)};template.source="function("+(settings.variable||"obj")+"){\n"+source+"}";return template};_.chain=function(obj){return _(obj).chain()};var result=function(obj){return this._chain?_(obj).chain():obj};_.mixin(_);each(["pop","push","reverse","shift","sort","splice","unshift"],function(name){var method=ArrayProto[name];_.prototype[name]=function(){var obj=this._wrapped;method.apply(obj,arguments);if((name=="shift"||name=="splice")&&obj.length===0)delete obj[0];return result.call(this,obj)}});each(["concat","join","slice"],function(name){var method=ArrayProto[name];_.prototype[name]=function(){return result.call(this,method.apply(this._wrapped,arguments))}});_.extend(_.prototype,{chain:function(){this._chain=true;return this},value:function(){return this._wrapped}})}.call(this)},{}],21:[function(require,module,exports){var global=self;module.exports=function(){return global.WebSocket||global.MozWebSocket}},{}],22:[function(require,module,exports){if(typeof window!=="undefined"&&typeof window.requestAnimationFrame!=="function"){window.requestAnimationFrame=window.webkitRequestAnimationFrame||window.mozRequestAnimationFrame||window.oRequestAnimationFrame||window.msRequestAnimationFrame||function(callback){setTimeout(callback,1e3/60)}}Leap=require("../lib/index")},{"../lib/index":9}]},{},[22]);;// three.js - http://github.com/mrdoob/three.js
 'use strict';var THREE={REVISION:"64"};self.console=self.console||{info:function(){},log:function(){},debug:function(){},warn:function(){},error:function(){}};String.prototype.trim=String.prototype.trim||function(){return this.replace(/^\s+|\s+$/g,"")};THREE.extend=function(a,b){if(Object.keys)for(var c=Object.keys(b),d=0,e=c.length;d<e;d++){var f=c[d];Object.defineProperty(a,f,Object.getOwnPropertyDescriptor(b,f))}else for(f in c={}.hasOwnProperty,b)c.call(b,f)&&(a[f]=b[f]);return a};
 (function(){for(var a=0,b=["ms","moz","webkit","o"],c=0;c<b.length&&!self.requestAnimationFrame;++c)self.requestAnimationFrame=self[b[c]+"RequestAnimationFrame"],self.cancelAnimationFrame=self[b[c]+"CancelAnimationFrame"]||self[b[c]+"CancelRequestAnimationFrame"];void 0===self.requestAnimationFrame&&void 0!==self.setTimeout&&(self.requestAnimationFrame=function(b){var c=Date.now(),f=Math.max(0,16-(c-a)),h=self.setTimeout(function(){b(c+f)},f);a=c+f;return h});void 0===self.cancelAnimationFrame&&void 0!==
 self.clearTimeout&&(self.cancelAnimationFrame=function(a){self.clearTimeout(a)})})();THREE.CullFaceNone=0;THREE.CullFaceBack=1;THREE.CullFaceFront=2;THREE.CullFaceFrontBack=3;THREE.FrontFaceDirectionCW=0;THREE.FrontFaceDirectionCCW=1;THREE.BasicShadowMap=0;THREE.PCFShadowMap=1;THREE.PCFSoftShadowMap=2;THREE.FrontSide=0;THREE.BackSide=1;THREE.DoubleSide=2;THREE.NoShading=0;THREE.FlatShading=1;THREE.SmoothShading=2;THREE.NoColors=0;THREE.FaceColors=1;THREE.VertexColors=2;THREE.NoBlending=0;
@@ -3647,18 +710,315 @@ s.material instanceof THREE.MeshFaceMaterial?s.material.materials[0]:s.material)
 s.matrixWorld),b.renderImmediateObject(k,i.__lights,null,c,s));m=b.getClearColor();l=b.getClearAlpha();a.clearColor(m.r,m.g,m.b,l);a.enable(a.BLEND)}};THREE.ShaderFlares={lensFlareVertexTexture:{vertexShader:"uniform lowp int renderType;\nuniform vec3 screenPosition;\nuniform vec2 scale;\nuniform float rotation;\nuniform sampler2D occlusionMap;\nattribute vec2 position;\nattribute vec2 uv;\nvarying vec2 vUV;\nvarying float vVisibility;\nvoid main() {\nvUV = uv;\nvec2 pos = position;\nif( renderType == 2 ) {\nvec4 visibility = texture2D( occlusionMap, vec2( 0.1, 0.1 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.5, 0.1 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.9, 0.1 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.9, 0.5 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.9, 0.9 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.5, 0.9 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.1, 0.9 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.1, 0.5 ) );\nvisibility += texture2D( occlusionMap, vec2( 0.5, 0.5 ) );\nvVisibility =        visibility.r / 9.0;\nvVisibility *= 1.0 - visibility.g / 9.0;\nvVisibility *=       visibility.b / 9.0;\nvVisibility *= 1.0 - visibility.a / 9.0;\npos.x = cos( rotation ) * position.x - sin( rotation ) * position.y;\npos.y = sin( rotation ) * position.x + cos( rotation ) * position.y;\n}\ngl_Position = vec4( ( pos * scale + screenPosition.xy ).xy, screenPosition.z, 1.0 );\n}",
 fragmentShader:"uniform lowp int renderType;\nuniform sampler2D map;\nuniform float opacity;\nuniform vec3 color;\nvarying vec2 vUV;\nvarying float vVisibility;\nvoid main() {\nif( renderType == 0 ) {\ngl_FragColor = vec4( 1.0, 0.0, 1.0, 0.0 );\n} else if( renderType == 1 ) {\ngl_FragColor = texture2D( map, vUV );\n} else {\nvec4 texture = texture2D( map, vUV );\ntexture.a *= opacity * vVisibility;\ngl_FragColor = texture;\ngl_FragColor.rgb *= color;\n}\n}"},lensFlare:{vertexShader:"uniform lowp int renderType;\nuniform vec3 screenPosition;\nuniform vec2 scale;\nuniform float rotation;\nattribute vec2 position;\nattribute vec2 uv;\nvarying vec2 vUV;\nvoid main() {\nvUV = uv;\nvec2 pos = position;\nif( renderType == 2 ) {\npos.x = cos( rotation ) * position.x - sin( rotation ) * position.y;\npos.y = sin( rotation ) * position.x + cos( rotation ) * position.y;\n}\ngl_Position = vec4( ( pos * scale + screenPosition.xy ).xy, screenPosition.z, 1.0 );\n}",
 fragmentShader:"precision mediump float;\nuniform lowp int renderType;\nuniform sampler2D map;\nuniform sampler2D occlusionMap;\nuniform float opacity;\nuniform vec3 color;\nvarying vec2 vUV;\nvoid main() {\nif( renderType == 0 ) {\ngl_FragColor = vec4( texture2D( map, vUV ).rgb, 0.0 );\n} else if( renderType == 1 ) {\ngl_FragColor = texture2D( map, vUV );\n} else {\nfloat visibility = texture2D( occlusionMap, vec2( 0.5, 0.1 ) ).a;\nvisibility += texture2D( occlusionMap, vec2( 0.9, 0.5 ) ).a;\nvisibility += texture2D( occlusionMap, vec2( 0.5, 0.9 ) ).a;\nvisibility += texture2D( occlusionMap, vec2( 0.1, 0.5 ) ).a;\nvisibility = ( 1.0 - visibility / 4.0 );\nvec4 texture = texture2D( map, vUV );\ntexture.a *= opacity * visibility;\ngl_FragColor = texture;\ngl_FragColor.rgb *= color;\n}\n}"}};
-;/*!
- * VERSION: 1.11.4
- * DATE: 2014-01-18
- * UPDATES AND DOCS AT: http://www.greensock.com
- *
- * @license Copyright (c) 2008-2014, GreenSock. All rights reserved.
- * This work is subject to the terms at http://www.greensock.com/terms_of_use.html or for
- * Club GreenSock members, the software agreement that was issued with your membership.
- * 
- * @author: Jack Doyle, jack@greensock.com
+;/**
+ * @author mrdoob / http://mrdoob.com/
  */
-(function(t){"use strict";var e=t.GreenSockGlobals||t;if(!e.TweenLite){var i,s,r,n,a,o=function(t){var i,s=t.split("."),r=e;for(i=0;s.length>i;i++)r[s[i]]=r=r[s[i]]||{};return r},l=o("com.greensock"),h=1e-10,_=[].slice,u=function(){},m=function(){var t=Object.prototype.toString,e=t.call([]);return function(i){return null!=i&&(i instanceof Array||"object"==typeof i&&!!i.push&&t.call(i)===e)}}(),f={},p=function(i,s,r,n){this.sc=f[i]?f[i].sc:[],f[i]=this,this.gsClass=null,this.func=r;var a=[];this.check=function(l){for(var h,_,u,m,c=s.length,d=c;--c>-1;)(h=f[s[c]]||new p(s[c],[])).gsClass?(a[c]=h.gsClass,d--):l&&h.sc.push(this);if(0===d&&r)for(_=("com.greensock."+i).split("."),u=_.pop(),m=o(_.join("."))[u]=this.gsClass=r.apply(r,a),n&&(e[u]=m,"function"==typeof define&&define.amd?define((t.GreenSockAMDPath?t.GreenSockAMDPath+"/":"")+i.split(".").join("/"),[],function(){return m}):"undefined"!=typeof module&&module.exports&&(module.exports=m)),c=0;this.sc.length>c;c++)this.sc[c].check()},this.check(!0)},c=t._gsDefine=function(t,e,i,s){return new p(t,e,i,s)},d=l._class=function(t,e,i){return e=e||function(){},c(t,[],function(){return e},i),e};c.globals=e;var v=[0,0,1,1],g=[],T=d("easing.Ease",function(t,e,i,s){this._func=t,this._type=i||0,this._power=s||0,this._params=e?v.concat(e):v},!0),w=T.map={},P=T.register=function(t,e,i,s){for(var r,n,a,o,h=e.split(","),_=h.length,u=(i||"easeIn,easeOut,easeInOut").split(",");--_>-1;)for(n=h[_],r=s?d("easing."+n,null,!0):l.easing[n]||{},a=u.length;--a>-1;)o=u[a],w[n+"."+o]=w[o+n]=r[o]=t.getRatio?t:t[o]||new t};for(r=T.prototype,r._calcEnd=!1,r.getRatio=function(t){if(this._func)return this._params[0]=t,this._func.apply(null,this._params);var e=this._type,i=this._power,s=1===e?1-t:2===e?t:.5>t?2*t:2*(1-t);return 1===i?s*=s:2===i?s*=s*s:3===i?s*=s*s*s:4===i&&(s*=s*s*s*s),1===e?1-s:2===e?s:.5>t?s/2:1-s/2},i=["Linear","Quad","Cubic","Quart","Quint,Strong"],s=i.length;--s>-1;)r=i[s]+",Power"+s,P(new T(null,null,1,s),r,"easeOut",!0),P(new T(null,null,2,s),r,"easeIn"+(0===s?",easeNone":"")),P(new T(null,null,3,s),r,"easeInOut");w.linear=l.easing.Linear.easeIn,w.swing=l.easing.Quad.easeInOut;var y=d("events.EventDispatcher",function(t){this._listeners={},this._eventTarget=t||this});r=y.prototype,r.addEventListener=function(t,e,i,s,r){r=r||0;var o,l,h=this._listeners[t],_=0;for(null==h&&(this._listeners[t]=h=[]),l=h.length;--l>-1;)o=h[l],o.c===e&&o.s===i?h.splice(l,1):0===_&&r>o.pr&&(_=l+1);h.splice(_,0,{c:e,s:i,up:s,pr:r}),this!==n||a||n.wake()},r.removeEventListener=function(t,e){var i,s=this._listeners[t];if(s)for(i=s.length;--i>-1;)if(s[i].c===e)return s.splice(i,1),void 0},r.dispatchEvent=function(t){var e,i,s,r=this._listeners[t];if(r)for(e=r.length,i=this._eventTarget;--e>-1;)s=r[e],s.up?s.c.call(s.s||i,{type:t,target:i}):s.c.call(s.s||i)};var b=t.requestAnimationFrame,k=t.cancelAnimationFrame,A=Date.now||function(){return(new Date).getTime()},S=A();for(i=["ms","moz","webkit","o"],s=i.length;--s>-1&&!b;)b=t[i[s]+"RequestAnimationFrame"],k=t[i[s]+"CancelAnimationFrame"]||t[i[s]+"CancelRequestAnimationFrame"];d("Ticker",function(t,e){var i,s,r,o,l,h=this,_=A(),m=e!==!1&&b,f=function(t){S=A(),h.time=(S-_)/1e3;var e,n=h.time-l;(!i||n>0||t===!0)&&(h.frame++,l+=n+(n>=o?.004:o-n),e=!0),t!==!0&&(r=s(f)),e&&h.dispatchEvent("tick")};y.call(h),h.time=h.frame=0,h.tick=function(){f(!0)},h.sleep=function(){null!=r&&(m&&k?k(r):clearTimeout(r),s=u,r=null,h===n&&(a=!1))},h.wake=function(){null!==r&&h.sleep(),s=0===i?u:m&&b?b:function(t){return setTimeout(t,0|1e3*(l-h.time)+1)},h===n&&(a=!0),f(2)},h.fps=function(t){return arguments.length?(i=t,o=1/(i||60),l=this.time+o,h.wake(),void 0):i},h.useRAF=function(t){return arguments.length?(h.sleep(),m=t,h.fps(i),void 0):m},h.fps(t),setTimeout(function(){m&&(!r||5>h.frame)&&h.useRAF(!1)},1500)}),r=l.Ticker.prototype=new l.events.EventDispatcher,r.constructor=l.Ticker;var x=d("core.Animation",function(t,e){if(this.vars=e=e||{},this._duration=this._totalDuration=t||0,this._delay=Number(e.delay)||0,this._timeScale=1,this._active=e.immediateRender===!0,this.data=e.data,this._reversed=e.reversed===!0,Q){a||n.wake();var i=this.vars.useFrames?G:Q;i.add(this,i._time),this.vars.paused&&this.paused(!0)}});n=x.ticker=new l.Ticker,r=x.prototype,r._dirty=r._gc=r._initted=r._paused=!1,r._totalTime=r._time=0,r._rawPrevTime=-1,r._next=r._last=r._onUpdate=r._timeline=r.timeline=null,r._paused=!1;var C=function(){a&&A()-S>2e3&&n.wake(),setTimeout(C,2e3)};C(),r.play=function(t,e){return arguments.length&&this.seek(t,e),this.reversed(!1).paused(!1)},r.pause=function(t,e){return arguments.length&&this.seek(t,e),this.paused(!0)},r.resume=function(t,e){return arguments.length&&this.seek(t,e),this.paused(!1)},r.seek=function(t,e){return this.totalTime(Number(t),e!==!1)},r.restart=function(t,e){return this.reversed(!1).paused(!1).totalTime(t?-this._delay:0,e!==!1,!0)},r.reverse=function(t,e){return arguments.length&&this.seek(t||this.totalDuration(),e),this.reversed(!0).paused(!1)},r.render=function(){},r.invalidate=function(){return this},r.isActive=function(){var t,e=this._timeline,i=this._startTime;return!e||!this._gc&&!this._paused&&e.isActive()&&(t=e.rawTime())>=i&&i+this.totalDuration()/this._timeScale>t},r._enabled=function(t,e){return a||n.wake(),this._gc=!t,this._active=this.isActive(),e!==!0&&(t&&!this.timeline?this._timeline.add(this,this._startTime-this._delay):!t&&this.timeline&&this._timeline._remove(this,!0)),!1},r._kill=function(){return this._enabled(!1,!1)},r.kill=function(t,e){return this._kill(t,e),this},r._uncache=function(t){for(var e=t?this:this.timeline;e;)e._dirty=!0,e=e.timeline;return this},r._swapSelfInParams=function(t){for(var e=t.length,i=t.concat();--e>-1;)"{self}"===t[e]&&(i[e]=this);return i},r.eventCallback=function(t,e,i,s){if("on"===(t||"").substr(0,2)){var r=this.vars;if(1===arguments.length)return r[t];null==e?delete r[t]:(r[t]=e,r[t+"Params"]=m(i)&&-1!==i.join("").indexOf("{self}")?this._swapSelfInParams(i):i,r[t+"Scope"]=s),"onUpdate"===t&&(this._onUpdate=e)}return this},r.delay=function(t){return arguments.length?(this._timeline.smoothChildTiming&&this.startTime(this._startTime+t-this._delay),this._delay=t,this):this._delay},r.duration=function(t){return arguments.length?(this._duration=this._totalDuration=t,this._uncache(!0),this._timeline.smoothChildTiming&&this._time>0&&this._time<this._duration&&0!==t&&this.totalTime(this._totalTime*(t/this._duration),!0),this):(this._dirty=!1,this._duration)},r.totalDuration=function(t){return this._dirty=!1,arguments.length?this.duration(t):this._totalDuration},r.time=function(t,e){return arguments.length?(this._dirty&&this.totalDuration(),this.totalTime(t>this._duration?this._duration:t,e)):this._time},r.totalTime=function(t,e,i){if(a||n.wake(),!arguments.length)return this._totalTime;if(this._timeline){if(0>t&&!i&&(t+=this.totalDuration()),this._timeline.smoothChildTiming){this._dirty&&this.totalDuration();var s=this._totalDuration,r=this._timeline;if(t>s&&!i&&(t=s),this._startTime=(this._paused?this._pauseTime:r._time)-(this._reversed?s-t:t)/this._timeScale,r._dirty||this._uncache(!1),r._timeline)for(;r._timeline;)r._timeline._time!==(r._startTime+r._totalTime)/r._timeScale&&r.totalTime(r._totalTime,!0),r=r._timeline}this._gc&&this._enabled(!0,!1),(this._totalTime!==t||0===this._duration)&&this.render(t,e,!1)}return this},r.progress=r.totalProgress=function(t,e){return arguments.length?this.totalTime(this.duration()*t,e):this._time/this.duration()},r.startTime=function(t){return arguments.length?(t!==this._startTime&&(this._startTime=t,this.timeline&&this.timeline._sortChildren&&this.timeline.add(this,t-this._delay)),this):this._startTime},r.timeScale=function(t){if(!arguments.length)return this._timeScale;if(t=t||h,this._timeline&&this._timeline.smoothChildTiming){var e=this._pauseTime,i=e||0===e?e:this._timeline.totalTime();this._startTime=i-(i-this._startTime)*this._timeScale/t}return this._timeScale=t,this._uncache(!1)},r.reversed=function(t){return arguments.length?(t!=this._reversed&&(this._reversed=t,this.totalTime(this._timeline&&!this._timeline.smoothChildTiming?this.totalDuration()-this._totalTime:this._totalTime,!0)),this):this._reversed},r.paused=function(t){if(!arguments.length)return this._paused;if(t!=this._paused&&this._timeline){a||t||n.wake();var e=this._timeline,i=e.rawTime(),s=i-this._pauseTime;!t&&e.smoothChildTiming&&(this._startTime+=s,this._uncache(!1)),this._pauseTime=t?i:null,this._paused=t,this._active=this.isActive(),!t&&0!==s&&this._initted&&this.duration()&&this.render(e.smoothChildTiming?this._totalTime:(i-this._startTime)/this._timeScale,!0,!0)}return this._gc&&!t&&this._enabled(!0,!1),this};var R=d("core.SimpleTimeline",function(t){x.call(this,0,t),this.autoRemoveChildren=this.smoothChildTiming=!0});r=R.prototype=new x,r.constructor=R,r.kill()._gc=!1,r._first=r._last=null,r._sortChildren=!1,r.add=r.insert=function(t,e){var i,s;if(t._startTime=Number(e||0)+t._delay,t._paused&&this!==t._timeline&&(t._pauseTime=t._startTime+(this.rawTime()-t._startTime)/t._timeScale),t.timeline&&t.timeline._remove(t,!0),t.timeline=t._timeline=this,t._gc&&t._enabled(!0,!0),i=this._last,this._sortChildren)for(s=t._startTime;i&&i._startTime>s;)i=i._prev;return i?(t._next=i._next,i._next=t):(t._next=this._first,this._first=t),t._next?t._next._prev=t:this._last=t,t._prev=i,this._timeline&&this._uncache(!0),this},r._remove=function(t,e){return t.timeline===this&&(e||t._enabled(!1,!0),t.timeline=null,t._prev?t._prev._next=t._next:this._first===t&&(this._first=t._next),t._next?t._next._prev=t._prev:this._last===t&&(this._last=t._prev),this._timeline&&this._uncache(!0)),this},r.render=function(t,e,i){var s,r=this._first;for(this._totalTime=this._time=this._rawPrevTime=t;r;)s=r._next,(r._active||t>=r._startTime&&!r._paused)&&(r._reversed?r.render((r._dirty?r.totalDuration():r._totalDuration)-(t-r._startTime)*r._timeScale,e,i):r.render((t-r._startTime)*r._timeScale,e,i)),r=s},r.rawTime=function(){return a||n.wake(),this._totalTime};var D=d("TweenLite",function(e,i,s){if(x.call(this,i,s),this.render=D.prototype.render,null==e)throw"Cannot tween a null target.";this.target=e="string"!=typeof e?e:D.selector(e)||e;var r,n,a,o=e.jquery||e.length&&e!==t&&e[0]&&(e[0]===t||e[0].nodeType&&e[0].style&&!e.nodeType),l=this.vars.overwrite;if(this._overwrite=l=null==l?j[D.defaultOverwrite]:"number"==typeof l?l>>0:j[l],(o||e instanceof Array||e.push&&m(e))&&"number"!=typeof e[0])for(this._targets=a=_.call(e,0),this._propLookup=[],this._siblings=[],r=0;a.length>r;r++)n=a[r],n?"string"!=typeof n?n.length&&n!==t&&n[0]&&(n[0]===t||n[0].nodeType&&n[0].style&&!n.nodeType)?(a.splice(r--,1),this._targets=a=a.concat(_.call(n,0))):(this._siblings[r]=B(n,this,!1),1===l&&this._siblings[r].length>1&&q(n,this,null,1,this._siblings[r])):(n=a[r--]=D.selector(n),"string"==typeof n&&a.splice(r+1,1)):a.splice(r--,1);else this._propLookup={},this._siblings=B(e,this,!1),1===l&&this._siblings.length>1&&q(e,this,null,1,this._siblings);(this.vars.immediateRender||0===i&&0===this._delay&&this.vars.immediateRender!==!1)&&this.render(-this._delay,!1,!0)},!0),E=function(e){return e.length&&e!==t&&e[0]&&(e[0]===t||e[0].nodeType&&e[0].style&&!e.nodeType)},I=function(t,e){var i,s={};for(i in t)F[i]||i in e&&"x"!==i&&"y"!==i&&"width"!==i&&"height"!==i&&"className"!==i&&"border"!==i||!(!N[i]||N[i]&&N[i]._autoCSS)||(s[i]=t[i],delete t[i]);t.css=s};r=D.prototype=new x,r.constructor=D,r.kill()._gc=!1,r.ratio=0,r._firstPT=r._targets=r._overwrittenProps=r._startAt=null,r._notifyPluginsOfEnabled=!1,D.version="1.11.4",D.defaultEase=r._ease=new T(null,null,1,1),D.defaultOverwrite="auto",D.ticker=n,D.autoSleep=!0,D.selector=t.$||t.jQuery||function(e){return t.$?(D.selector=t.$,t.$(e)):t.document?t.document.getElementById("#"===e.charAt(0)?e.substr(1):e):e};var O=D._internals={isArray:m,isSelector:E},N=D._plugins={},L=D._tweenLookup={},U=0,F=O.reservedProps={ease:1,delay:1,overwrite:1,onComplete:1,onCompleteParams:1,onCompleteScope:1,useFrames:1,runBackwards:1,startAt:1,onUpdate:1,onUpdateParams:1,onUpdateScope:1,onStart:1,onStartParams:1,onStartScope:1,onReverseComplete:1,onReverseCompleteParams:1,onReverseCompleteScope:1,onRepeat:1,onRepeatParams:1,onRepeatScope:1,easeParams:1,yoyo:1,immediateRender:1,repeat:1,repeatDelay:1,data:1,paused:1,reversed:1,autoCSS:1},j={none:0,all:1,auto:2,concurrent:3,allOnStart:4,preexisting:5,"true":1,"false":0},G=x._rootFramesTimeline=new R,Q=x._rootTimeline=new R;Q._startTime=n.time,G._startTime=n.frame,Q._active=G._active=!0,x._updateRoot=function(){if(Q.render((n.time-Q._startTime)*Q._timeScale,!1,!1),G.render((n.frame-G._startTime)*G._timeScale,!1,!1),!(n.frame%120)){var t,e,i;for(i in L){for(e=L[i].tweens,t=e.length;--t>-1;)e[t]._gc&&e.splice(t,1);0===e.length&&delete L[i]}if(i=Q._first,(!i||i._paused)&&D.autoSleep&&!G._first&&1===n._listeners.tick.length){for(;i&&i._paused;)i=i._next;i||n.sleep()}}},n.addEventListener("tick",x._updateRoot);var B=function(t,e,i){var s,r,n=t._gsTweenID;if(L[n||(t._gsTweenID=n="t"+U++)]||(L[n]={target:t,tweens:[]}),e&&(s=L[n].tweens,s[r=s.length]=e,i))for(;--r>-1;)s[r]===e&&s.splice(r,1);return L[n].tweens},q=function(t,e,i,s,r){var n,a,o,l;if(1===s||s>=4){for(l=r.length,n=0;l>n;n++)if((o=r[n])!==e)o._gc||o._enabled(!1,!1)&&(a=!0);else if(5===s)break;return a}var _,u=e._startTime+h,m=[],f=0,p=0===e._duration;for(n=r.length;--n>-1;)(o=r[n])===e||o._gc||o._paused||(o._timeline!==e._timeline?(_=_||$(e,0,p),0===$(o,_,p)&&(m[f++]=o)):u>=o._startTime&&o._startTime+o.totalDuration()/o._timeScale>u&&((p||!o._initted)&&2e-10>=u-o._startTime||(m[f++]=o)));for(n=f;--n>-1;)o=m[n],2===s&&o._kill(i,t)&&(a=!0),(2!==s||!o._firstPT&&o._initted)&&o._enabled(!1,!1)&&(a=!0);return a},$=function(t,e,i){for(var s=t._timeline,r=s._timeScale,n=t._startTime;s._timeline;){if(n+=s._startTime,r*=s._timeScale,s._paused)return-100;s=s._timeline}return n/=r,n>e?n-e:i&&n===e||!t._initted&&2*h>n-e?h:(n+=t.totalDuration()/t._timeScale/r)>e+h?0:n-e-h};r._init=function(){var t,e,i,s,r=this.vars,n=this._overwrittenProps,a=this._duration,o=r.immediateRender,l=r.ease;if(r.startAt){if(this._startAt&&this._startAt.render(-1,!0),r.startAt.overwrite=0,r.startAt.immediateRender=!0,this._startAt=D.to(this.target,0,r.startAt),o)if(this._time>0)this._startAt=null;else if(0!==a)return}else if(r.runBackwards&&0!==a)if(this._startAt)this._startAt.render(-1,!0),this._startAt=null;else{i={};for(s in r)F[s]&&"autoCSS"!==s||(i[s]=r[s]);if(i.overwrite=0,i.data="isFromStart",this._startAt=D.to(this.target,0,i),r.immediateRender){if(0===this._time)return}else this._startAt.render(-1,!0)}if(this._ease=l?l instanceof T?r.easeParams instanceof Array?l.config.apply(l,r.easeParams):l:"function"==typeof l?new T(l,r.easeParams):w[l]||D.defaultEase:D.defaultEase,this._easeType=this._ease._type,this._easePower=this._ease._power,this._firstPT=null,this._targets)for(t=this._targets.length;--t>-1;)this._initProps(this._targets[t],this._propLookup[t]={},this._siblings[t],n?n[t]:null)&&(e=!0);else e=this._initProps(this.target,this._propLookup,this._siblings,n);if(e&&D._onPluginEvent("_onInitAllProps",this),n&&(this._firstPT||"function"!=typeof this.target&&this._enabled(!1,!1)),r.runBackwards)for(i=this._firstPT;i;)i.s+=i.c,i.c=-i.c,i=i._next;this._onUpdate=r.onUpdate,this._initted=!0},r._initProps=function(e,i,s,r){var n,a,o,l,h,_;if(null==e)return!1;this.vars.css||e.style&&e!==t&&e.nodeType&&N.css&&this.vars.autoCSS!==!1&&I(this.vars,e);for(n in this.vars){if(_=this.vars[n],F[n])_&&(_ instanceof Array||_.push&&m(_))&&-1!==_.join("").indexOf("{self}")&&(this.vars[n]=_=this._swapSelfInParams(_,this));else if(N[n]&&(l=new N[n])._onInitTween(e,this.vars[n],this)){for(this._firstPT=h={_next:this._firstPT,t:l,p:"setRatio",s:0,c:1,f:!0,n:n,pg:!0,pr:l._priority},a=l._overwriteProps.length;--a>-1;)i[l._overwriteProps[a]]=this._firstPT;(l._priority||l._onInitAllProps)&&(o=!0),(l._onDisable||l._onEnable)&&(this._notifyPluginsOfEnabled=!0)}else this._firstPT=i[n]=h={_next:this._firstPT,t:e,p:n,f:"function"==typeof e[n],n:n,pg:!1,pr:0},h.s=h.f?e[n.indexOf("set")||"function"!=typeof e["get"+n.substr(3)]?n:"get"+n.substr(3)]():parseFloat(e[n]),h.c="string"==typeof _&&"="===_.charAt(1)?parseInt(_.charAt(0)+"1",10)*Number(_.substr(2)):Number(_)-h.s||0;h&&h._next&&(h._next._prev=h)}return r&&this._kill(r,e)?this._initProps(e,i,s,r):this._overwrite>1&&this._firstPT&&s.length>1&&q(e,this,i,this._overwrite,s)?(this._kill(i,e),this._initProps(e,i,s,r)):o},r.render=function(t,e,i){var s,r,n,a,o=this._time,l=this._duration;if(t>=l)this._totalTime=this._time=l,this.ratio=this._ease._calcEnd?this._ease.getRatio(1):1,this._reversed||(s=!0,r="onComplete"),0===l&&(a=this._rawPrevTime,(0===t||0>a||a===h)&&a!==t&&(i=!0,a>h&&(r="onReverseComplete")),this._rawPrevTime=a=!e||t||0===a?t:h);else if(1e-7>t)this._totalTime=this._time=0,this.ratio=this._ease._calcEnd?this._ease.getRatio(0):0,(0!==o||0===l&&this._rawPrevTime>h)&&(r="onReverseComplete",s=this._reversed),0>t?(this._active=!1,0===l&&(this._rawPrevTime>=0&&(i=!0),this._rawPrevTime=a=!e||t||0===this._rawPrevTime?t:h)):this._initted||(i=!0);else if(this._totalTime=this._time=t,this._easeType){var _=t/l,u=this._easeType,m=this._easePower;(1===u||3===u&&_>=.5)&&(_=1-_),3===u&&(_*=2),1===m?_*=_:2===m?_*=_*_:3===m?_*=_*_*_:4===m&&(_*=_*_*_*_),this.ratio=1===u?1-_:2===u?_:.5>t/l?_/2:1-_/2}else this.ratio=this._ease.getRatio(t/l);if(this._time!==o||i){if(!this._initted){if(this._init(),!this._initted||this._gc)return;this._time&&!s?this.ratio=this._ease.getRatio(this._time/l):s&&this._ease._calcEnd&&(this.ratio=this._ease.getRatio(0===this._time?0:1))}for(this._active||!this._paused&&this._time!==o&&t>=0&&(this._active=!0),0===o&&(this._startAt&&(t>=0?this._startAt.render(t,e,i):r||(r="_dummyGS")),this.vars.onStart&&(0!==this._time||0===l)&&(e||this.vars.onStart.apply(this.vars.onStartScope||this,this.vars.onStartParams||g))),n=this._firstPT;n;)n.f?n.t[n.p](n.c*this.ratio+n.s):n.t[n.p]=n.c*this.ratio+n.s,n=n._next;this._onUpdate&&(0>t&&this._startAt&&this._startTime&&this._startAt.render(t,e,i),e||(this._time!==o||s)&&this._onUpdate.apply(this.vars.onUpdateScope||this,this.vars.onUpdateParams||g)),r&&(this._gc||(0>t&&this._startAt&&!this._onUpdate&&this._startTime&&this._startAt.render(t,e,i),s&&(this._timeline.autoRemoveChildren&&this._enabled(!1,!1),this._active=!1),!e&&this.vars[r]&&this.vars[r].apply(this.vars[r+"Scope"]||this,this.vars[r+"Params"]||g),0===l&&this._rawPrevTime===h&&a!==h&&(this._rawPrevTime=0)))}},r._kill=function(t,e){if("all"===t&&(t=null),null==t&&(null==e||e===this.target))return this._enabled(!1,!1);e="string"!=typeof e?e||this._targets||this.target:D.selector(e)||e;var i,s,r,n,a,o,l,h;if((m(e)||E(e))&&"number"!=typeof e[0])for(i=e.length;--i>-1;)this._kill(t,e[i])&&(o=!0);else{if(this._targets){for(i=this._targets.length;--i>-1;)if(e===this._targets[i]){a=this._propLookup[i]||{},this._overwrittenProps=this._overwrittenProps||[],s=this._overwrittenProps[i]=t?this._overwrittenProps[i]||{}:"all";break}}else{if(e!==this.target)return!1;a=this._propLookup,s=this._overwrittenProps=t?this._overwrittenProps||{}:"all"}if(a){l=t||a,h=t!==s&&"all"!==s&&t!==a&&("object"!=typeof t||!t._tempKill);for(r in l)(n=a[r])&&(n.pg&&n.t._kill(l)&&(o=!0),n.pg&&0!==n.t._overwriteProps.length||(n._prev?n._prev._next=n._next:n===this._firstPT&&(this._firstPT=n._next),n._next&&(n._next._prev=n._prev),n._next=n._prev=null),delete a[r]),h&&(s[r]=1);!this._firstPT&&this._initted&&this._enabled(!1,!1)}}return o},r.invalidate=function(){return this._notifyPluginsOfEnabled&&D._onPluginEvent("_onDisable",this),this._firstPT=null,this._overwrittenProps=null,this._onUpdate=null,this._startAt=null,this._initted=this._active=this._notifyPluginsOfEnabled=!1,this._propLookup=this._targets?{}:[],this},r._enabled=function(t,e){if(a||n.wake(),t&&this._gc){var i,s=this._targets;if(s)for(i=s.length;--i>-1;)this._siblings[i]=B(s[i],this,!0);else this._siblings=B(this.target,this,!0)}return x.prototype._enabled.call(this,t,e),this._notifyPluginsOfEnabled&&this._firstPT?D._onPluginEvent(t?"_onEnable":"_onDisable",this):!1},D.to=function(t,e,i){return new D(t,e,i)},D.from=function(t,e,i){return i.runBackwards=!0,i.immediateRender=0!=i.immediateRender,new D(t,e,i)},D.fromTo=function(t,e,i,s){return s.startAt=i,s.immediateRender=0!=s.immediateRender&&0!=i.immediateRender,new D(t,e,s)},D.delayedCall=function(t,e,i,s,r){return new D(e,0,{delay:t,onComplete:e,onCompleteParams:i,onCompleteScope:s,onReverseComplete:e,onReverseCompleteParams:i,onReverseCompleteScope:s,immediateRender:!1,useFrames:r,overwrite:0})},D.set=function(t,e){return new D(t,0,e)},D.getTweensOf=function(t,e){if(null==t)return[];t="string"!=typeof t?t:D.selector(t)||t;var i,s,r,n;if((m(t)||E(t))&&"number"!=typeof t[0]){for(i=t.length,s=[];--i>-1;)s=s.concat(D.getTweensOf(t[i],e));for(i=s.length;--i>-1;)for(n=s[i],r=i;--r>-1;)n===s[r]&&s.splice(i,1)}else for(s=B(t).concat(),i=s.length;--i>-1;)(s[i]._gc||e&&!s[i].isActive())&&s.splice(i,1);return s},D.killTweensOf=D.killDelayedCallsTo=function(t,e,i){"object"==typeof e&&(i=e,e=!1);for(var s=D.getTweensOf(t,e),r=s.length;--r>-1;)s[r]._kill(i,t)};var M=d("plugins.TweenPlugin",function(t,e){this._overwriteProps=(t||"").split(","),this._propName=this._overwriteProps[0],this._priority=e||0,this._super=M.prototype},!0);if(r=M.prototype,M.version="1.10.1",M.API=2,r._firstPT=null,r._addTween=function(t,e,i,s,r,n){var a,o;return null!=s&&(a="number"==typeof s||"="!==s.charAt(1)?Number(s)-i:parseInt(s.charAt(0)+"1",10)*Number(s.substr(2)))?(this._firstPT=o={_next:this._firstPT,t:t,p:e,s:i,c:a,f:"function"==typeof t[e],n:r||e,r:n},o._next&&(o._next._prev=o),o):void 0},r.setRatio=function(t){for(var e,i=this._firstPT,s=1e-6;i;)e=i.c*t+i.s,i.r?e=0|e+(e>0?.5:-.5):s>e&&e>-s&&(e=0),i.f?i.t[i.p](e):i.t[i.p]=e,i=i._next},r._kill=function(t){var e,i=this._overwriteProps,s=this._firstPT;if(null!=t[this._propName])this._overwriteProps=[];else for(e=i.length;--e>-1;)null!=t[i[e]]&&i.splice(e,1);for(;s;)null!=t[s.n]&&(s._next&&(s._next._prev=s._prev),s._prev?(s._prev._next=s._next,s._prev=null):this._firstPT===s&&(this._firstPT=s._next)),s=s._next;return!1},r._roundProps=function(t,e){for(var i=this._firstPT;i;)(t[this._propName]||null!=i.n&&t[i.n.split(this._propName+"_").join("")])&&(i.r=e),i=i._next},D._onPluginEvent=function(t,e){var i,s,r,n,a,o=e._firstPT;if("_onInitAllProps"===t){for(;o;){for(a=o._next,s=r;s&&s.pr>o.pr;)s=s._next;(o._prev=s?s._prev:n)?o._prev._next=o:r=o,(o._next=s)?s._prev=o:n=o,o=a}o=e._firstPT=r}for(;o;)o.pg&&"function"==typeof o.t[t]&&o.t[t]()&&(i=!0),o=o._next;return i},M.activate=function(t){for(var e=t.length;--e>-1;)t[e].API===M.API&&(N[(new t[e])._propName]=t[e]);return!0},c.plugin=function(t){if(!(t&&t.propName&&t.init&&t.API))throw"illegal plugin definition.";var e,i=t.propName,s=t.priority||0,r=t.overwriteProps,n={init:"_onInitTween",set:"setRatio",kill:"_kill",round:"_roundProps",initAll:"_onInitAllProps"},a=d("plugins."+i.charAt(0).toUpperCase()+i.substr(1)+"Plugin",function(){M.call(this,i,s),this._overwriteProps=r||[]},t.global===!0),o=a.prototype=new M(i);o.constructor=a,a.API=t.API;for(e in n)"function"==typeof t[e]&&(o[n[e]]=t[e]);return a.version=t.version,M.activate([a]),a},i=t._gsQueue){for(s=0;i.length>s;s++)i[s]();for(r in f)f[r].func||t.console.log("GSAP encountered missing dependency: com.greensock."+r)}a=!1}})(window);;/**
+
+THREE.OBJLoader = function ( manager ) {
+
+    this.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;
+
+};
+
+THREE.OBJLoader.prototype = {
+
+    constructor: THREE.OBJLoader,
+
+    load: function ( url, onLoad, onProgress, onError ) {
+
+        var scope = this;
+
+        var loader = new THREE.XHRLoader( scope.manager );
+        loader.setCrossOrigin( this.crossOrigin );
+        loader.load( url, function ( text ) {
+
+            onLoad( scope.parse( text ) );
+
+        } );
+
+    },
+
+    parse: function ( text ) {
+
+        function vector( x, y, z ) {
+
+            return new THREE.Vector3( x, y, z );
+
+        }
+
+        function uv( u, v ) {
+
+            return new THREE.Vector2( u, v );
+
+        }
+
+        function face3( a, b, c, normals ) {
+
+            return new THREE.Face3( a, b, c, normals );
+
+        }
+
+        var object = new THREE.Object3D();
+        var geometry, material, mesh;
+        var face_offset = 0;
+
+        function add_face( a, b, c, normals_inds ) {
+
+            if ( normals_inds === undefined ) {
+
+                geometry.faces.push( face3(
+                    parseInt( a ) - (face_offset + 1),
+                    parseInt( b ) - (face_offset + 1),
+                    parseInt( c ) - (face_offset + 1)
+                ) );
+
+            } else {
+
+                geometry.faces.push( face3(
+                    parseInt( a ) - (face_offset + 1),
+                    parseInt( b ) - (face_offset + 1),
+                    parseInt( c ) - (face_offset + 1),
+                    [
+                        normals[ parseInt( normals_inds[ 0 ] ) - 1 ].clone(),
+                        normals[ parseInt( normals_inds[ 1 ] ) - 1 ].clone(),
+                        normals[ parseInt( normals_inds[ 2 ] ) - 1 ].clone()
+                    ]
+                ) );
+
+            }
+
+        }
+
+        function add_uvs( a, b, c ) {
+
+            geometry.faceVertexUvs[ 0 ].push( [
+                uvs[ parseInt( a ) - 1 ].clone(),
+                uvs[ parseInt( b ) - 1 ].clone(),
+                uvs[ parseInt( c ) - 1 ].clone()
+            ] );
+
+        }
+
+        function handle_face_line(faces, uvs, normals_inds) {
+
+            if ( faces[ 3 ] === undefined ) {
+
+                add_face( faces[ 0 ], faces[ 1 ], faces[ 2 ], normals_inds );
+
+                if (!(uvs === undefined) && uvs.length > 0) {
+
+                    add_uvs( uvs[ 0 ], uvs[ 1 ], uvs[ 2 ] );
+
+                }
+
+            } else {
+
+                if (!(normals_inds === undefined) && normals_inds.length > 0) {
+
+                    add_face( faces[ 0 ], faces[ 1 ], faces[ 3 ], [ normals_inds[ 0 ], normals_inds[ 1 ], normals_inds[ 3 ] ]);
+                    add_face( faces[ 1 ], faces[ 2 ], faces[ 3 ], [ normals_inds[ 1 ], normals_inds[ 2 ], normals_inds[ 3 ] ]);
+
+                } else {
+
+                    add_face( faces[ 0 ], faces[ 1 ], faces[ 3 ]);
+                    add_face( faces[ 1 ], faces[ 2 ], faces[ 3 ]);
+
+                }
+
+                if (!(uvs === undefined) && uvs.length > 0) {
+
+                    add_uvs( uvs[ 0 ], uvs[ 1 ], uvs[ 3 ] );
+                    add_uvs( uvs[ 1 ], uvs[ 2 ], uvs[ 3 ] );
+
+                }
+
+            }
+
+        }
+
+        // create mesh if no objects in text
+
+        if ( /^o /gm.test( text ) === false ) {
+
+            geometry = new THREE.Geometry();
+            material = new THREE.MeshLambertMaterial();
+            mesh = new THREE.Mesh( geometry, material );
+            object.add( mesh );
+
+        }
+
+        var vertices = [];
+        var verticesCount = 0;
+        var normals = [];
+        var uvs = [];
+
+        // v float float float
+
+        var vertex_pattern = /v( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
+
+        // vn float float float
+
+        var normal_pattern = /vn( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
+
+        // vt float float
+
+        var uv_pattern = /vt( +[\d|\.|\+|\-|e]+)( +[\d|\.|\+|\-|e]+)/;
+
+        // f vertex vertex vertex ...
+
+        var face_pattern1 = /f( +\d+)( +\d+)( +\d+)( +\d+)?/;
+
+        // f vertex/uv vertex/uv vertex/uv ...
+
+        var face_pattern2 = /f( +(\d+)\/(\d+))( +(\d+)\/(\d+))( +(\d+)\/(\d+))( +(\d+)\/(\d+))?/;
+
+        // f vertex/uv/normal vertex/uv/normal vertex/uv/normal ...
+
+        var face_pattern3 = /f( +(\d+)\/(\d+)\/(\d+))( +(\d+)\/(\d+)\/(\d+))( +(\d+)\/(\d+)\/(\d+))( +(\d+)\/(\d+)\/(\d+))?/;
+
+        // f vertex//normal vertex//normal vertex//normal ...
+
+        var face_pattern4 = /f( +(\d+)\/\/(\d+))( +(\d+)\/\/(\d+))( +(\d+)\/\/(\d+))( +(\d+)\/\/(\d+))?/
+
+        //
+
+        var lines = text.split( '\n' );
+
+        for ( var i = 0; i < lines.length; i ++ ) {
+
+            var line = lines[ i ];
+            line = line.trim();
+
+            var result;
+
+            if ( line.length === 0 || line.charAt( 0 ) === '#' ) {
+
+                continue;
+
+            } else if ( ( result = vertex_pattern.exec( line ) ) !== null ) {
+
+                // ["v 1.0 2.0 3.0", "1.0", "2.0", "3.0"]
+
+                geometry.vertices.push( vector(
+                    parseFloat( result[ 1 ] ),
+                    parseFloat( result[ 2 ] ),
+                    parseFloat( result[ 3 ] )
+                ) );
+
+            } else if ( ( result = normal_pattern.exec( line ) ) !== null ) {
+
+                // ["vn 1.0 2.0 3.0", "1.0", "2.0", "3.0"]
+
+                normals.push( vector(
+                    parseFloat( result[ 1 ] ),
+                    parseFloat( result[ 2 ] ),
+                    parseFloat( result[ 3 ] )
+                ) );
+
+            } else if ( ( result = uv_pattern.exec( line ) ) !== null ) {
+
+                // ["vt 0.1 0.2", "0.1", "0.2"]
+
+                uvs.push( uv(
+                    parseFloat( result[ 1 ] ),
+                    parseFloat( result[ 2 ] )
+                ) );
+
+            } else if ( ( result = face_pattern1.exec( line ) ) !== null ) {
+
+                // ["f 1 2 3", "1", "2", "3", undefined]
+
+                handle_face_line([ result[ 1 ], result[ 2 ], result[ 3 ], result[ 4 ] ]);
+
+            } else if ( ( result = face_pattern2.exec( line ) ) !== null ) {
+
+                // ["f 1/1 2/2 3/3", " 1/1", "1", "1", " 2/2", "2", "2", " 3/3", "3", "3", undefined, undefined, undefined]
+
+                handle_face_line(
+                    [ result[ 2 ], result[ 5 ], result[ 8 ], result[ 11 ] ], //faces
+                    [ result[ 3 ], result[ 6 ], result[ 9 ], result[ 12 ] ] //uv
+                );
+
+            } else if ( ( result = face_pattern3.exec( line ) ) !== null ) {
+
+                // ["f 1/1/1 2/2/2 3/3/3", " 1/1/1", "1", "1", "1", " 2/2/2", "2", "2", "2", " 3/3/3", "3", "3", "3", undefined, undefined, undefined, undefined]
+
+                handle_face_line(
+                    [ result[ 2 ], result[ 6 ], result[ 10 ], result[ 14 ] ], //faces
+                    [ result[ 3 ], result[ 7 ], result[ 11 ], result[ 15 ] ], //uv
+                    [ result[ 4 ], result[ 8 ], result[ 12 ], result[ 16 ] ] //normal
+                );
+
+            } else if ( ( result = face_pattern4.exec( line ) ) !== null ) {
+
+                // ["f 1//1 2//2 3//3", " 1//1", "1", "1", " 2//2", "2", "2", " 3//3", "3", "3", undefined, undefined, undefined]
+
+                handle_face_line(
+                    [ result[ 2 ], result[ 5 ], result[ 8 ], result[ 11 ] ], //faces
+                    [ ], //uv
+                    [ result[ 3 ], result[ 6 ], result[ 9 ], result[ 12 ] ] //normal
+                );
+
+            } else if ( /^o /.test( line ) ) {
+
+                // object
+
+                if (!(geometry === undefined)) {
+
+                    face_offset = face_offset + geometry.vertices.length;
+
+                }
+
+                geometry = new THREE.Geometry();
+                material = new THREE.MeshLambertMaterial();
+
+                mesh = new THREE.Mesh( geometry, material );
+                mesh.name = line.substring( 2 ).trim();
+                object.add( mesh );
+
+                verticesCount = 0;
+
+            } else if ( /^g /.test( line ) ) {
+
+                // group
+
+            } else if ( /^usemtl /.test( line ) ) {
+
+                // material
+
+                material.name = line.substring( 7 ).trim();
+
+            } else if ( /^mtllib /.test( line ) ) {
+
+                // mtl file
+
+            } else if ( /^s /.test( line ) ) {
+
+                // smooth shading
+
+            } else {
+
+                // console.log( "THREE.OBJLoader: Unhandled line " + line );
+
+            }
+
+        }
+
+        for ( var i = 0, l = object.children.length; i < l; i ++ ) {
+
+            var geometry = object.children[ i ].geometry;
+
+            geometry.computeCentroids();
+            geometry.computeFaceNormals();
+            geometry.computeBoundingSphere();
+
+        }
+
+        return object;
+
+    }
+
+};;/**
  * dat-gui JavaScript Controller Library
  * http://code.google.com/p/dat-gui
  *
@@ -3752,6 +1112,17 @@ window.mozRequestAnimationFrame||window.oRequestAnimationFrame||window.msRequest
 document.createElement("div");a.extend(this.domElement.style,{position:"fixed",display:"none",zIndex:"1001",opacity:0,WebkitTransition:"-webkit-transform 0.2s ease-out, opacity 0.2s linear"});document.body.appendChild(this.backgroundElement);document.body.appendChild(this.domElement);var c=this;e.bind(this.backgroundElement,"click",function(){c.hide()})};c.prototype.show=function(){var c=this;this.backgroundElement.style.display="block";this.domElement.style.display="block";this.domElement.style.opacity=
 0;this.domElement.style.webkitTransform="scale(1.1)";this.layout();a.defer(function(){c.backgroundElement.style.opacity=1;c.domElement.style.opacity=1;c.domElement.style.webkitTransform="scale(1)"})};c.prototype.hide=function(){var a=this,c=function(){a.domElement.style.display="none";a.backgroundElement.style.display="none";e.unbind(a.domElement,"webkitTransitionEnd",c);e.unbind(a.domElement,"transitionend",c);e.unbind(a.domElement,"oTransitionEnd",c)};e.bind(this.domElement,"webkitTransitionEnd",
 c);e.bind(this.domElement,"transitionend",c);e.bind(this.domElement,"oTransitionEnd",c);this.backgroundElement.style.opacity=0;this.domElement.style.opacity=0;this.domElement.style.webkitTransform="scale(1.1)"};c.prototype.layout=function(){this.domElement.style.left=window.innerWidth/2-e.getWidth(this.domElement)/2+"px";this.domElement.style.top=window.innerHeight/2-e.getHeight(this.domElement)/2+"px"};return c}(dat.dom.dom,dat.utils.common),dat.dom.dom,dat.utils.common);;/*!
+ * VERSION: beta 1.9.3
+ * DATE: 2013-04-02
+ * UPDATES AND DOCS AT: http://www.greensock.com
+ *
+ * @license Copyright (c) 2008-2014, GreenSock. All rights reserved.
+ * This work is subject to the terms at http://www.greensock.com/terms_of_use.html or for
+ * Club GreenSock members, the software agreement that was issued with your membership.
+ * 
+ * @author: Jack Doyle, jack@greensock.com
+ **/
+(window._gsQueue||(window._gsQueue=[])).push(function(){"use strict";window._gsDefine("easing.Back",["easing.Ease"],function(t){var e,i,s,r=window.GreenSockGlobals||window,n=r.com.greensock,a=2*Math.PI,o=Math.PI/2,h=n._class,l=function(e,i){var s=h("easing."+e,function(){},!0),r=s.prototype=new t;return r.constructor=s,r.getRatio=i,s},_=t.register||function(){},u=function(t,e,i,s){var r=h("easing."+t,{easeOut:new e,easeIn:new i,easeInOut:new s},!0);return _(r,t),r},c=function(t,e,i){this.t=t,this.v=e,i&&(this.next=i,i.prev=this,this.c=i.v-e,this.gap=i.t-t)},p=function(e,i){var s=h("easing."+e,function(t){this._p1=t||0===t?t:1.70158,this._p2=1.525*this._p1},!0),r=s.prototype=new t;return r.constructor=s,r.getRatio=i,r.config=function(t){return new s(t)},s},f=u("Back",p("BackOut",function(t){return(t-=1)*t*((this._p1+1)*t+this._p1)+1}),p("BackIn",function(t){return t*t*((this._p1+1)*t-this._p1)}),p("BackInOut",function(t){return 1>(t*=2)?.5*t*t*((this._p2+1)*t-this._p2):.5*((t-=2)*t*((this._p2+1)*t+this._p2)+2)})),m=h("easing.SlowMo",function(t,e,i){e=e||0===e?e:.7,null==t?t=.7:t>1&&(t=1),this._p=1!==t?e:0,this._p1=(1-t)/2,this._p2=t,this._p3=this._p1+this._p2,this._calcEnd=i===!0},!0),d=m.prototype=new t;return d.constructor=m,d.getRatio=function(t){var e=t+(.5-t)*this._p;return this._p1>t?this._calcEnd?1-(t=1-t/this._p1)*t:e-(t=1-t/this._p1)*t*t*t*e:t>this._p3?this._calcEnd?1-(t=(t-this._p3)/this._p1)*t:e+(t-e)*(t=(t-this._p3)/this._p1)*t*t*t:this._calcEnd?1:e},m.ease=new m(.7,.7),d.config=m.config=function(t,e,i){return new m(t,e,i)},e=h("easing.SteppedEase",function(t){t=t||1,this._p1=1/t,this._p2=t+1},!0),d=e.prototype=new t,d.constructor=e,d.getRatio=function(t){return 0>t?t=0:t>=1&&(t=.999999999),(this._p2*t>>0)*this._p1},d.config=e.config=function(t){return new e(t)},i=h("easing.RoughEase",function(e){e=e||{};for(var i,s,r,n,a,o,h=e.taper||"none",l=[],_=0,u=0|(e.points||20),p=u,f=e.randomize!==!1,m=e.clamp===!0,d=e.template instanceof t?e.template:null,g="number"==typeof e.strength?.4*e.strength:.4;--p>-1;)i=f?Math.random():1/u*p,s=d?d.getRatio(i):i,"none"===h?r=g:"out"===h?(n=1-i,r=n*n*g):"in"===h?r=i*i*g:.5>i?(n=2*i,r=.5*n*n*g):(n=2*(1-i),r=.5*n*n*g),f?s+=Math.random()*r-.5*r:p%2?s+=.5*r:s-=.5*r,m&&(s>1?s=1:0>s&&(s=0)),l[_++]={x:i,y:s};for(l.sort(function(t,e){return t.x-e.x}),o=new c(1,1,null),p=u;--p>-1;)a=l[p],o=new c(a.x,a.y,o);this._prev=new c(0,0,0!==o.t?o:o.next)},!0),d=i.prototype=new t,d.constructor=i,d.getRatio=function(t){var e=this._prev;if(t>e.t){for(;e.next&&t>=e.t;)e=e.next;e=e.prev}else for(;e.prev&&e.t>=t;)e=e.prev;return this._prev=e,e.v+(t-e.t)/e.gap*e.c},d.config=function(t){return new i(t)},i.ease=new i,u("Bounce",l("BounceOut",function(t){return 1/2.75>t?7.5625*t*t:2/2.75>t?7.5625*(t-=1.5/2.75)*t+.75:2.5/2.75>t?7.5625*(t-=2.25/2.75)*t+.9375:7.5625*(t-=2.625/2.75)*t+.984375}),l("BounceIn",function(t){return 1/2.75>(t=1-t)?1-7.5625*t*t:2/2.75>t?1-(7.5625*(t-=1.5/2.75)*t+.75):2.5/2.75>t?1-(7.5625*(t-=2.25/2.75)*t+.9375):1-(7.5625*(t-=2.625/2.75)*t+.984375)}),l("BounceInOut",function(t){var e=.5>t;return t=e?1-2*t:2*t-1,t=1/2.75>t?7.5625*t*t:2/2.75>t?7.5625*(t-=1.5/2.75)*t+.75:2.5/2.75>t?7.5625*(t-=2.25/2.75)*t+.9375:7.5625*(t-=2.625/2.75)*t+.984375,e?.5*(1-t):.5*t+.5})),u("Circ",l("CircOut",function(t){return Math.sqrt(1-(t-=1)*t)}),l("CircIn",function(t){return-(Math.sqrt(1-t*t)-1)}),l("CircInOut",function(t){return 1>(t*=2)?-.5*(Math.sqrt(1-t*t)-1):.5*(Math.sqrt(1-(t-=2)*t)+1)})),s=function(e,i,s){var r=h("easing."+e,function(t,e){this._p1=t||1,this._p2=e||s,this._p3=this._p2/a*(Math.asin(1/this._p1)||0)},!0),n=r.prototype=new t;return n.constructor=r,n.getRatio=i,n.config=function(t,e){return new r(t,e)},r},u("Elastic",s("ElasticOut",function(t){return this._p1*Math.pow(2,-10*t)*Math.sin((t-this._p3)*a/this._p2)+1},.3),s("ElasticIn",function(t){return-(this._p1*Math.pow(2,10*(t-=1))*Math.sin((t-this._p3)*a/this._p2))},.3),s("ElasticInOut",function(t){return 1>(t*=2)?-.5*this._p1*Math.pow(2,10*(t-=1))*Math.sin((t-this._p3)*a/this._p2):.5*this._p1*Math.pow(2,-10*(t-=1))*Math.sin((t-this._p3)*a/this._p2)+1},.45)),u("Expo",l("ExpoOut",function(t){return 1-Math.pow(2,-10*t)}),l("ExpoIn",function(t){return Math.pow(2,10*(t-1))-.001}),l("ExpoInOut",function(t){return 1>(t*=2)?.5*Math.pow(2,10*(t-1)):.5*(2-Math.pow(2,-10*(t-1)))})),u("Sine",l("SineOut",function(t){return Math.sin(t*o)}),l("SineIn",function(t){return-Math.cos(t*o)+1}),l("SineInOut",function(t){return-.5*(Math.cos(Math.PI*t)-1)})),h("easing.EaseLookup",{find:function(e){return t.map[e]}},!0),_(r.SlowMo,"SlowMo","ease,"),_(i,"RoughEase","ease,"),_(e,"SteppedEase","ease,"),f},!0)}),window._gsDefine&&window._gsQueue.pop()();;/*!
  *  howler.js v1.1.17
  *  howlerjs.com
  *
@@ -3760,33 +1131,2006 @@ c);e.bind(this.domElement,"transitionend",c);e.bind(this.domElement,"oTransition
  *
  *  MIT License
  */
-!function(){var e={},t=null,n=!0,r=!1;if("undefined"!=typeof AudioContext)t=new AudioContext;else if("undefined"!=typeof webkitAudioContext)t=new webkitAudioContext;else if("undefined"!=typeof Audio){n=!1;try{new Audio}catch(i){r=!0}}else n=!1,r=!0;if(n){var s=void 0===t.createGain?t.createGainNode():t.createGain();s.gain.value=1,s.connect(t.destination)}var o=function(){this._volume=1,this._muted=!1,this.usingWebAudio=n,this.noAudio=r,this._howls=[]};o.prototype={volume:function(e){var t=this;if(e=parseFloat(e),e>=0&&1>=e){t._volume=e,n&&(s.gain.value=e);for(var r in t._howls)if(t._howls.hasOwnProperty(r)&&t._howls[r]._webAudio===!1)for(var i=0;i<t._howls[r]._audioNode.length;i++)t._howls[r]._audioNode[i].volume=t._howls[r]._volume*t._volume;return t}return n?s.gain.value:t._volume},mute:function(){return this._setMuted(!0),this},unmute:function(){return this._setMuted(!1),this},_setMuted:function(e){var t=this;t._muted=e,n&&(s.gain.value=e?0:t._volume);for(var r in t._howls)if(t._howls.hasOwnProperty(r)&&t._howls[r]._webAudio===!1)for(var i=0;i<t._howls[r]._audioNode.length;i++)t._howls[r]._audioNode[i].muted=e}};var u=new o,a=null;if(!r){a=new Audio;var f={mp3:!!a.canPlayType("audio/mpeg;").replace(/^no$/,""),opus:!!a.canPlayType('audio/ogg; codecs="opus"').replace(/^no$/,""),ogg:!!a.canPlayType('audio/ogg; codecs="vorbis"').replace(/^no$/,""),wav:!!a.canPlayType('audio/wav; codecs="1"').replace(/^no$/,""),m4a:!!(a.canPlayType("audio/x-m4a;")||a.canPlayType("audio/aac;")).replace(/^no$/,""),mp4:!!(a.canPlayType("audio/x-mp4;")||a.canPlayType("audio/aac;")).replace(/^no$/,""),weba:!!a.canPlayType('audio/webm; codecs="vorbis"').replace(/^no$/,"")}}var l=function(e){var t=this;t._autoplay=e.autoplay||!1,t._buffer=e.buffer||!1,t._duration=e.duration||0,t._format=e.format||null,t._loop=e.loop||!1,t._loaded=!1,t._sprite=e.sprite||{},t._src=e.src||"",t._pos3d=e.pos3d||[0,0,-.5],t._volume=void 0!==e.volume?e.volume:1,t._urls=e.urls||[],t._rate=e.rate||1,t._onload=[e.onload||function(){}],t._onloaderror=[e.onloaderror||function(){}],t._onend=[e.onend||function(){}],t._onpause=[e.onpause||function(){}],t._onplay=[e.onplay||function(){}],t._onendTimer=[],t._webAudio=n&&!t._buffer,t._audioNode=[],t._webAudio&&t._setupAudioNode(),u._howls.push(t),t.load()};if(l.prototype={load:function(){var t=this,n=null;if(r)return t.on("loaderror"),void 0;for(var i=0;i<t._urls.length;i++){var s,o;if(t._format)s=t._format;else{if(o=t._urls[i].toLowerCase().split("?")[0],s=o.match(/.+\.([^?]+)(\?|$)/),s=s&&s.length>=2?s:o.match(/data\:audio\/([^?]+);/),!s)return t.on("loaderror"),void 0;s=s[1]}if(f[s]){n=t._urls[i];break}}if(!n)return t.on("loaderror"),void 0;if(t._src=n,t._webAudio)c(t,n);else{var a=new Audio;t._audioNode.push(a),a.src=n,a._pos=0,a.preload="auto",a.volume=u._muted?0:t._volume*u.volume(),e[n]=t;var l=function(){t._duration=Math.ceil(10*a.duration)/10,0===Object.getOwnPropertyNames(t._sprite).length&&(t._sprite={_default:[0,1e3*t._duration]}),t._loaded||(t._loaded=!0,t.on("load")),t._autoplay&&t.play(),a.removeEventListener("canplaythrough",l,!1)};a.addEventListener("canplaythrough",l,!1),a.load()}return t},urls:function(e){var t=this;return e?(t.stop(),t._urls="string"==typeof e?[e]:e,t._loaded=!1,t.load(),t):t._urls},play:function(e,n){var r=this;return"function"==typeof e&&(n=e),e&&"function"!=typeof e||(e="_default"),r._loaded?r._sprite[e]?(r._inactiveNode(function(i){i._sprite=e;var s,o=i._pos>0?i._pos:r._sprite[e][0]/1e3,a=r._sprite[e][1]/1e3-i._pos,f=!(!r._loop&&!r._sprite[e][2]),l="string"==typeof n?n:Math.round(Date.now()*Math.random())+"";if(function(){var t={id:l,sprite:e,loop:f};s=setTimeout(function(){!r._webAudio&&f&&r.stop(t.id,t.timer).play(e,t.id),r._webAudio&&!f&&(r._nodeById(t.id).paused=!0,r._nodeById(t.id)._pos=0),r._webAudio||f||r.stop(t.id,t.timer),r.on("end",l)},1e3*a),r._onendTimer.push(s),t.timer=r._onendTimer[r._onendTimer.length-1]}(),r._webAudio){var c=r._sprite[e][0]/1e3,h=r._sprite[e][1]/1e3;i.id=l,i.paused=!1,p(r,[f,c,h],l),r._playStart=t.currentTime,i.gain.value=r._volume,void 0===i.bufferSource.start?i.bufferSource.noteGrainOn(0,o,a):i.bufferSource.start(0,o,a)}else{if(4!==i.readyState)return r._clearEndTimer(s),function(){var t=r,s=e,o=n,u=i,a=function(){t.play(s,o),u.removeEventListener("canplaythrough",a,!1)};u.addEventListener("canplaythrough",a,!1)}(),r;i.id=l,i.currentTime=o,i.muted=u._muted,i.volume=r._volume*u.volume(),setTimeout(function(){i.play()},0)}return r.on("play"),"function"==typeof n&&n(l),r}),r):("function"==typeof n&&n(),r):(r.on("load",function(){r.play(e,n)}),r)},pause:function(e,t){var n=this;if(!n._loaded)return n.on("play",function(){n.pause(e)}),n;n._clearEndTimer(t||0);var r=e?n._nodeById(e):n._activeNode();if(r)if(r._pos=n.pos(null,e),n._webAudio){if(!r.bufferSource||r.paused)return n;r.paused=!0,void 0===r.bufferSource.stop?r.bufferSource.noteOff(0):r.bufferSource.stop(0)}else r.pause();return n.on("pause"),n},stop:function(e,t){var n=this;if(!n._loaded)return n.on("play",function(){n.stop(e)}),n;n._clearEndTimer(t||0);var r=e?n._nodeById(e):n._activeNode();if(r)if(r._pos=0,n._webAudio){if(!r.bufferSource||r.paused)return n;r.paused=!0,void 0===r.bufferSource.stop?r.bufferSource.noteOff(0):r.bufferSource.stop(0)}else r.pause(),r.currentTime=0;return n},mute:function(e){var t=this;if(!t._loaded)return t.on("play",function(){t.mute(e)}),t;var n=e?t._nodeById(e):t._activeNode();return n&&(t._webAudio?n.gain.value=0:n.volume=0),t},unmute:function(e){var t=this;if(!t._loaded)return t.on("play",function(){t.unmute(e)}),t;var n=e?t._nodeById(e):t._activeNode();return n&&(t._webAudio?n.gain.value=t._volume:n.volume=t._volume),t},volume:function(e,t){var n=this;if(e=parseFloat(e),e>=0&&1>=e){if(n._volume=e,!n._loaded)return n.on("play",function(){n.volume(e,t)}),n;var r=t?n._nodeById(t):n._activeNode();return r&&(n._webAudio?r.gain.value=e:r.volume=e*u.volume()),n}return n._volume},loop:function(e){var t=this;return"boolean"==typeof e?(t._loop=e,t):t._loop},sprite:function(e){var t=this;return"object"==typeof e?(t._sprite=e,t):t._sprite},pos:function(e,n){var r=this;if(!r._loaded)return r.on("load",function(){r.pos(e)}),"number"==typeof e?r:r._pos||0;e=parseFloat(e);var i=n?r._nodeById(n):r._activeNode();if(i)return e>=0?(r.pause(n),i._pos=e,r.play(i._sprite,n),r):r._webAudio?i._pos+(t.currentTime-r._playStart):i.currentTime;if(e>=0)return r;for(var s=0;s<r._audioNode.length;s++)if(r._audioNode[s].paused&&4===r._audioNode[s].readyState)return r._webAudio?r._audioNode[s]._pos:r._audioNode[s].currentTime},pos3d:function(e,t,n,r){var i=this;if(t=void 0!==t&&t?t:0,n=void 0!==n&&n?n:-.5,!i._loaded)return i.on("play",function(){i.pos3d(e,t,n,r)}),i;if(!(e>=0||0>e))return i._pos3d;if(i._webAudio){var s=r?i._nodeById(r):i._activeNode();s&&(i._pos3d=[e,t,n],s.panner.setPosition(e,t,n))}return i},fade:function(e,t,n,r,i){var s=this,o=Math.abs(e-t),u=e>t?"down":"up",a=o/.01,f=n/a;if(!s._loaded)return s.on("load",function(){s.fade(e,t,n,r,i)}),s;s.volume(e,i);for(var l=1;a>=l;l++)!function(){var e=s._volume+("up"===u?.01:-.01)*l,n=Math.round(1e3*e)/1e3,o=t;setTimeout(function(){s.volume(n,i),n===o&&r&&r()},f*l)}()},fadeIn:function(e,t,n){return this.volume(0).play().fade(0,e,t,n)},fadeOut:function(e,t,n,r){var i=this;return i.fade(i._volume,e,t,function(){n&&n(),i.pause(r),i.on("end")},r)},_nodeById:function(e){for(var t=this,n=t._audioNode[0],r=0;r<t._audioNode.length;r++)if(t._audioNode[r].id===e){n=t._audioNode[r];break}return n},_activeNode:function(){for(var e=this,t=null,n=0;n<e._audioNode.length;n++)if(!e._audioNode[n].paused){t=e._audioNode[n];break}return e._drainPool(),t},_inactiveNode:function(e){for(var t=this,n=null,r=0;r<t._audioNode.length;r++)if(t._audioNode[r].paused&&4===t._audioNode[r].readyState){e(t._audioNode[r]),n=!0;break}if(t._drainPool(),!n){var i;t._webAudio?(i=t._setupAudioNode(),e(i)):(t.load(),i=t._audioNode[t._audioNode.length-1],i.addEventListener("loadedmetadata",function(){e(i)}))}},_drainPool:function(){var e,t=this,n=0;for(e=0;e<t._audioNode.length;e++)t._audioNode[e].paused&&n++;for(e=t._audioNode.length-1;e>=0&&!(5>=n);e--)t._audioNode[e].paused&&(t._webAudio&&t._audioNode[e].disconnect(0),n--,t._audioNode.splice(e,1))},_clearEndTimer:function(e){var t=this,n=t._onendTimer.indexOf(e);n=n>=0?n:0,t._onendTimer[n]&&(clearTimeout(t._onendTimer[n]),t._onendTimer.splice(n,1))},_setupAudioNode:function(){var e=this,n=e._audioNode,r=e._audioNode.length;return n[r]=void 0===t.createGain?t.createGainNode():t.createGain(),n[r].gain.value=e._volume,n[r].paused=!0,n[r]._pos=0,n[r].readyState=4,n[r].connect(s),n[r].panner=t.createPanner(),n[r].panner.setPosition(e._pos3d[0],e._pos3d[1],e._pos3d[2]),n[r].panner.connect(n[r]),n[r]},on:function(e,t){var n=this,r=n["_on"+e];if("function"==typeof t)r.push(t);else for(var i=0;i<r.length;i++)t?r[i].call(n,t):r[i].call(n);return n},off:function(e,t){for(var n=this,r=n["_on"+e],i=""+t,s=0;s<r.length;s++)if(i===""+r[s]){r.splice(s,1);break}return n},unload:function(){for(var t=this,n=t._audioNode,r=0;r<t._audioNode.length;r++)n[r].paused||t.stop(n[r].id),t._webAudio?n[r].disconnect(0):n[r].src="";var i=u._howls.indexOf(t);null!==i&&i>=0&&u._howls.splice(i,1),delete e[t._src],t=null}},n)var c=function(n,r){if(r in e)n._duration=e[r].duration,h(n);else{var i=new XMLHttpRequest;i.open("GET",r,!0),i.responseType="arraybuffer",i.onload=function(){t.decodeAudioData(i.response,function(t){t&&(e[r]=t,h(n,t))},function(){n.on("loaderror")})},i.onerror=function(){n._webAudio&&(n._buffer=!0,n._webAudio=!1,n._audioNode=[],delete n._gainNode,n.load())};try{i.send()}catch(s){i.onerror()}}},h=function(e,t){e._duration=t?t.duration:e._duration,0===Object.getOwnPropertyNames(e._sprite).length&&(e._sprite={_default:[0,1e3*e._duration]}),e._loaded||(e._loaded=!0,e.on("load")),e._autoplay&&e.play()},p=function(n,r,i){var s=n._nodeById(i);s.bufferSource=t.createBufferSource(),s.bufferSource.buffer=e[n._src],s.bufferSource.connect(s.panner),s.bufferSource.loop=r[0],r[0]&&(s.bufferSource.loopStart=r[1],s.bufferSource.loopEnd=r[1]+r[2]),s.bufferSource.playbackRate.value=n._rate};"function"==typeof define&&define.amd&&define(function(){return{Howler:u,Howl:l}}),"undefined"!=typeof exports&&(exports.Howler=u,exports.Howl=l),window.Howler=u,window.Howl=l}();// http://paulirish.com/2011/requestanimationframe-for-smart-animating/
-// http://my.opera.com/emoller/blog/2011/12/20/requestanimationframe-for-smart-er-animating
+!function(){var e={},t=null,n=!0,r=!1;if("undefined"!=typeof AudioContext)t=new AudioContext;else if("undefined"!=typeof webkitAudioContext)t=new webkitAudioContext;else if("undefined"!=typeof Audio){n=!1;try{new Audio}catch(i){r=!0}}else n=!1,r=!0;if(n){var s=void 0===t.createGain?t.createGainNode():t.createGain();s.gain.value=1,s.connect(t.destination)}var o=function(){this._volume=1,this._muted=!1,this.usingWebAudio=n,this.noAudio=r,this._howls=[]};o.prototype={volume:function(e){var t=this;if(e=parseFloat(e),e>=0&&1>=e){t._volume=e,n&&(s.gain.value=e);for(var r in t._howls)if(t._howls.hasOwnProperty(r)&&t._howls[r]._webAudio===!1)for(var i=0;i<t._howls[r]._audioNode.length;i++)t._howls[r]._audioNode[i].volume=t._howls[r]._volume*t._volume;return t}return n?s.gain.value:t._volume},mute:function(){return this._setMuted(!0),this},unmute:function(){return this._setMuted(!1),this},_setMuted:function(e){var t=this;t._muted=e,n&&(s.gain.value=e?0:t._volume);for(var r in t._howls)if(t._howls.hasOwnProperty(r)&&t._howls[r]._webAudio===!1)for(var i=0;i<t._howls[r]._audioNode.length;i++)t._howls[r]._audioNode[i].muted=e}};var u=new o,a=null;if(!r){a=new Audio;var f={mp3:!!a.canPlayType("audio/mpeg;").replace(/^no$/,""),opus:!!a.canPlayType('audio/ogg; codecs="opus"').replace(/^no$/,""),ogg:!!a.canPlayType('audio/ogg; codecs="vorbis"').replace(/^no$/,""),wav:!!a.canPlayType('audio/wav; codecs="1"').replace(/^no$/,""),m4a:!!(a.canPlayType("audio/x-m4a;")||a.canPlayType("audio/aac;")).replace(/^no$/,""),mp4:!!(a.canPlayType("audio/x-mp4;")||a.canPlayType("audio/aac;")).replace(/^no$/,""),weba:!!a.canPlayType('audio/webm; codecs="vorbis"').replace(/^no$/,"")}}var l=function(e){var t=this;t._autoplay=e.autoplay||!1,t._buffer=e.buffer||!1,t._duration=e.duration||0,t._format=e.format||null,t._loop=e.loop||!1,t._loaded=!1,t._sprite=e.sprite||{},t._src=e.src||"",t._pos3d=e.pos3d||[0,0,-.5],t._volume=void 0!==e.volume?e.volume:1,t._urls=e.urls||[],t._rate=e.rate||1,t._onload=[e.onload||function(){}],t._onloaderror=[e.onloaderror||function(){}],t._onend=[e.onend||function(){}],t._onpause=[e.onpause||function(){}],t._onplay=[e.onplay||function(){}],t._onendTimer=[],t._webAudio=n&&!t._buffer,t._audioNode=[],t._webAudio&&t._setupAudioNode(),u._howls.push(t),t.load()};if(l.prototype={load:function(){var t=this,n=null;if(r)return t.on("loaderror"),void 0;for(var i=0;i<t._urls.length;i++){var s,o;if(t._format)s=t._format;else{if(o=t._urls[i].toLowerCase().split("?")[0],s=o.match(/.+\.([^?]+)(\?|$)/),s=s&&s.length>=2?s:o.match(/data\:audio\/([^?]+);/),!s)return t.on("loaderror"),void 0;s=s[1]}if(f[s]){n=t._urls[i];break}}if(!n)return t.on("loaderror"),void 0;if(t._src=n,t._webAudio)c(t,n);else{var a=new Audio;t._audioNode.push(a),a.src=n,a._pos=0,a.preload="auto",a.volume=u._muted?0:t._volume*u.volume(),e[n]=t;var l=function(){t._duration=Math.ceil(10*a.duration)/10,0===Object.getOwnPropertyNames(t._sprite).length&&(t._sprite={_default:[0,1e3*t._duration]}),t._loaded||(t._loaded=!0,t.on("load")),t._autoplay&&t.play(),a.removeEventListener("canplaythrough",l,!1)};a.addEventListener("canplaythrough",l,!1),a.load()}return t},urls:function(e){var t=this;return e?(t.stop(),t._urls="string"==typeof e?[e]:e,t._loaded=!1,t.load(),t):t._urls},play:function(e,n){var r=this;return"function"==typeof e&&(n=e),e&&"function"!=typeof e||(e="_default"),r._loaded?r._sprite[e]?(r._inactiveNode(function(i){i._sprite=e;var s,o=i._pos>0?i._pos:r._sprite[e][0]/1e3,a=r._sprite[e][1]/1e3-i._pos,f=!(!r._loop&&!r._sprite[e][2]),l="string"==typeof n?n:Math.round(Date.now()*Math.random())+"";if(function(){var t={id:l,sprite:e,loop:f};s=setTimeout(function(){!r._webAudio&&f&&r.stop(t.id,t.timer).play(e,t.id),r._webAudio&&!f&&(r._nodeById(t.id).paused=!0,r._nodeById(t.id)._pos=0),r._webAudio||f||r.stop(t.id,t.timer),r.on("end",l)},1e3*a),r._onendTimer.push(s),t.timer=r._onendTimer[r._onendTimer.length-1]}(),r._webAudio){var c=r._sprite[e][0]/1e3,h=r._sprite[e][1]/1e3;i.id=l,i.paused=!1,p(r,[f,c,h],l),r._playStart=t.currentTime,i.gain.value=r._volume,void 0===i.bufferSource.start?i.bufferSource.noteGrainOn(0,o,a):i.bufferSource.start(0,o,a)}else{if(4!==i.readyState)return r._clearEndTimer(s),function(){var t=r,s=e,o=n,u=i,a=function(){t.play(s,o),u.removeEventListener("canplaythrough",a,!1)};u.addEventListener("canplaythrough",a,!1)}(),r;i.id=l,i.currentTime=o,i.muted=u._muted,i.volume=r._volume*u.volume(),setTimeout(function(){i.play()},0)}return r.on("play"),"function"==typeof n&&n(l),r}),r):("function"==typeof n&&n(),r):(r.on("load",function(){r.play(e,n)}),r)},pause:function(e,t){var n=this;if(!n._loaded)return n.on("play",function(){n.pause(e)}),n;n._clearEndTimer(t||0);var r=e?n._nodeById(e):n._activeNode();if(r)if(r._pos=n.pos(null,e),n._webAudio){if(!r.bufferSource||r.paused)return n;r.paused=!0,void 0===r.bufferSource.stop?r.bufferSource.noteOff(0):r.bufferSource.stop(0)}else r.pause();return n.on("pause"),n},stop:function(e,t){var n=this;if(!n._loaded)return n.on("play",function(){n.stop(e)}),n;n._clearEndTimer(t||0);var r=e?n._nodeById(e):n._activeNode();if(r)if(r._pos=0,n._webAudio){if(!r.bufferSource||r.paused)return n;r.paused=!0,void 0===r.bufferSource.stop?r.bufferSource.noteOff(0):r.bufferSource.stop(0)}else r.pause(),r.currentTime=0;return n},mute:function(e){var t=this;if(!t._loaded)return t.on("play",function(){t.mute(e)}),t;var n=e?t._nodeById(e):t._activeNode();return n&&(t._webAudio?n.gain.value=0:n.volume=0),t},unmute:function(e){var t=this;if(!t._loaded)return t.on("play",function(){t.unmute(e)}),t;var n=e?t._nodeById(e):t._activeNode();return n&&(t._webAudio?n.gain.value=t._volume:n.volume=t._volume),t},volume:function(e,t){var n=this;if(e=parseFloat(e),e>=0&&1>=e){if(n._volume=e,!n._loaded)return n.on("play",function(){n.volume(e,t)}),n;var r=t?n._nodeById(t):n._activeNode();return r&&(n._webAudio?r.gain.value=e:r.volume=e*u.volume()),n}return n._volume},loop:function(e){var t=this;return"boolean"==typeof e?(t._loop=e,t):t._loop},sprite:function(e){var t=this;return"object"==typeof e?(t._sprite=e,t):t._sprite},pos:function(e,n){var r=this;if(!r._loaded)return r.on("load",function(){r.pos(e)}),"number"==typeof e?r:r._pos||0;e=parseFloat(e);var i=n?r._nodeById(n):r._activeNode();if(i)return e>=0?(r.pause(n),i._pos=e,r.play(i._sprite,n),r):r._webAudio?i._pos+(t.currentTime-r._playStart):i.currentTime;if(e>=0)return r;for(var s=0;s<r._audioNode.length;s++)if(r._audioNode[s].paused&&4===r._audioNode[s].readyState)return r._webAudio?r._audioNode[s]._pos:r._audioNode[s].currentTime},pos3d:function(e,t,n,r){var i=this;if(t=void 0!==t&&t?t:0,n=void 0!==n&&n?n:-.5,!i._loaded)return i.on("play",function(){i.pos3d(e,t,n,r)}),i;if(!(e>=0||0>e))return i._pos3d;if(i._webAudio){var s=r?i._nodeById(r):i._activeNode();s&&(i._pos3d=[e,t,n],s.panner.setPosition(e,t,n))}return i},fade:function(e,t,n,r,i){var s=this,o=Math.abs(e-t),u=e>t?"down":"up",a=o/.01,f=n/a;if(!s._loaded)return s.on("load",function(){s.fade(e,t,n,r,i)}),s;s.volume(e,i);for(var l=1;a>=l;l++)!function(){var e=s._volume+("up"===u?.01:-.01)*l,n=Math.round(1e3*e)/1e3,o=t;setTimeout(function(){s.volume(n,i),n===o&&r&&r()},f*l)}()},fadeIn:function(e,t,n){return this.volume(0).play().fade(0,e,t,n)},fadeOut:function(e,t,n,r){var i=this;return i.fade(i._volume,e,t,function(){n&&n(),i.pause(r),i.on("end")},r)},_nodeById:function(e){for(var t=this,n=t._audioNode[0],r=0;r<t._audioNode.length;r++)if(t._audioNode[r].id===e){n=t._audioNode[r];break}return n},_activeNode:function(){for(var e=this,t=null,n=0;n<e._audioNode.length;n++)if(!e._audioNode[n].paused){t=e._audioNode[n];break}return e._drainPool(),t},_inactiveNode:function(e){for(var t=this,n=null,r=0;r<t._audioNode.length;r++)if(t._audioNode[r].paused&&4===t._audioNode[r].readyState){e(t._audioNode[r]),n=!0;break}if(t._drainPool(),!n){var i;t._webAudio?(i=t._setupAudioNode(),e(i)):(t.load(),i=t._audioNode[t._audioNode.length-1],i.addEventListener("loadedmetadata",function(){e(i)}))}},_drainPool:function(){var e,t=this,n=0;for(e=0;e<t._audioNode.length;e++)t._audioNode[e].paused&&n++;for(e=t._audioNode.length-1;e>=0&&!(5>=n);e--)t._audioNode[e].paused&&(t._webAudio&&t._audioNode[e].disconnect(0),n--,t._audioNode.splice(e,1))},_clearEndTimer:function(e){var t=this,n=t._onendTimer.indexOf(e);n=n>=0?n:0,t._onendTimer[n]&&(clearTimeout(t._onendTimer[n]),t._onendTimer.splice(n,1))},_setupAudioNode:function(){var e=this,n=e._audioNode,r=e._audioNode.length;return n[r]=void 0===t.createGain?t.createGainNode():t.createGain(),n[r].gain.value=e._volume,n[r].paused=!0,n[r]._pos=0,n[r].readyState=4,n[r].connect(s),n[r].panner=t.createPanner(),n[r].panner.setPosition(e._pos3d[0],e._pos3d[1],e._pos3d[2]),n[r].panner.connect(n[r]),n[r]},on:function(e,t){var n=this,r=n["_on"+e];if("function"==typeof t)r.push(t);else for(var i=0;i<r.length;i++)t?r[i].call(n,t):r[i].call(n);return n},off:function(e,t){for(var n=this,r=n["_on"+e],i=""+t,s=0;s<r.length;s++)if(i===""+r[s]){r.splice(s,1);break}return n},unload:function(){for(var t=this,n=t._audioNode,r=0;r<t._audioNode.length;r++)n[r].paused||t.stop(n[r].id),t._webAudio?n[r].disconnect(0):n[r].src="";var i=u._howls.indexOf(t);null!==i&&i>=0&&u._howls.splice(i,1),delete e[t._src],t=null}},n)var c=function(n,r){if(r in e)n._duration=e[r].duration,h(n);else{var i=new XMLHttpRequest;i.open("GET",r,!0),i.responseType="arraybuffer",i.onload=function(){t.decodeAudioData(i.response,function(t){t&&(e[r]=t,h(n,t))},function(){n.on("loaderror")})},i.onerror=function(){n._webAudio&&(n._buffer=!0,n._webAudio=!1,n._audioNode=[],delete n._gainNode,n.load())};try{i.send()}catch(s){i.onerror()}}},h=function(e,t){e._duration=t?t.duration:e._duration,0===Object.getOwnPropertyNames(e._sprite).length&&(e._sprite={_default:[0,1e3*e._duration]}),e._loaded||(e._loaded=!0,e.on("load")),e._autoplay&&e.play()},p=function(n,r,i){var s=n._nodeById(i);s.bufferSource=t.createBufferSource(),s.bufferSource.buffer=e[n._src],s.bufferSource.connect(s.panner),s.bufferSource.loop=r[0],r[0]&&(s.bufferSource.loopStart=r[1],s.bufferSource.loopEnd=r[1]+r[2]),s.bufferSource.playbackRate.value=n._rate};"function"==typeof define&&define.amd&&define(function(){return{Howler:u,Howl:l}}),"undefined"!=typeof exports&&(exports.Howler=u,exports.Howl=l),window.Howler=u,window.Howl=l}();/*!
+ * VERSION: 1.11.4
+ * DATE: 2014-01-18
+ * UPDATES AND DOCS AT: http://www.greensock.com
+ *
+ * @license Copyright (c) 2008-2014, GreenSock. All rights reserved.
+ * This work is subject to the terms at http://www.greensock.com/terms_of_use.html or for
+ * Club GreenSock members, the software agreement that was issued with your membership.
+ * 
+ * @author: Jack Doyle, jack@greensock.com
+ */
+(function(t){"use strict";var e=t.GreenSockGlobals||t;if(!e.TweenLite){var i,s,r,n,a,o=function(t){var i,s=t.split("."),r=e;for(i=0;s.length>i;i++)r[s[i]]=r=r[s[i]]||{};return r},l=o("com.greensock"),h=1e-10,_=[].slice,u=function(){},m=function(){var t=Object.prototype.toString,e=t.call([]);return function(i){return null!=i&&(i instanceof Array||"object"==typeof i&&!!i.push&&t.call(i)===e)}}(),f={},p=function(i,s,r,n){this.sc=f[i]?f[i].sc:[],f[i]=this,this.gsClass=null,this.func=r;var a=[];this.check=function(l){for(var h,_,u,m,c=s.length,d=c;--c>-1;)(h=f[s[c]]||new p(s[c],[])).gsClass?(a[c]=h.gsClass,d--):l&&h.sc.push(this);if(0===d&&r)for(_=("com.greensock."+i).split("."),u=_.pop(),m=o(_.join("."))[u]=this.gsClass=r.apply(r,a),n&&(e[u]=m,"function"==typeof define&&define.amd?define((t.GreenSockAMDPath?t.GreenSockAMDPath+"/":"")+i.split(".").join("/"),[],function(){return m}):"undefined"!=typeof module&&module.exports&&(module.exports=m)),c=0;this.sc.length>c;c++)this.sc[c].check()},this.check(!0)},c=t._gsDefine=function(t,e,i,s){return new p(t,e,i,s)},d=l._class=function(t,e,i){return e=e||function(){},c(t,[],function(){return e},i),e};c.globals=e;var v=[0,0,1,1],g=[],T=d("easing.Ease",function(t,e,i,s){this._func=t,this._type=i||0,this._power=s||0,this._params=e?v.concat(e):v},!0),w=T.map={},P=T.register=function(t,e,i,s){for(var r,n,a,o,h=e.split(","),_=h.length,u=(i||"easeIn,easeOut,easeInOut").split(",");--_>-1;)for(n=h[_],r=s?d("easing."+n,null,!0):l.easing[n]||{},a=u.length;--a>-1;)o=u[a],w[n+"."+o]=w[o+n]=r[o]=t.getRatio?t:t[o]||new t};for(r=T.prototype,r._calcEnd=!1,r.getRatio=function(t){if(this._func)return this._params[0]=t,this._func.apply(null,this._params);var e=this._type,i=this._power,s=1===e?1-t:2===e?t:.5>t?2*t:2*(1-t);return 1===i?s*=s:2===i?s*=s*s:3===i?s*=s*s*s:4===i&&(s*=s*s*s*s),1===e?1-s:2===e?s:.5>t?s/2:1-s/2},i=["Linear","Quad","Cubic","Quart","Quint,Strong"],s=i.length;--s>-1;)r=i[s]+",Power"+s,P(new T(null,null,1,s),r,"easeOut",!0),P(new T(null,null,2,s),r,"easeIn"+(0===s?",easeNone":"")),P(new T(null,null,3,s),r,"easeInOut");w.linear=l.easing.Linear.easeIn,w.swing=l.easing.Quad.easeInOut;var y=d("events.EventDispatcher",function(t){this._listeners={},this._eventTarget=t||this});r=y.prototype,r.addEventListener=function(t,e,i,s,r){r=r||0;var o,l,h=this._listeners[t],_=0;for(null==h&&(this._listeners[t]=h=[]),l=h.length;--l>-1;)o=h[l],o.c===e&&o.s===i?h.splice(l,1):0===_&&r>o.pr&&(_=l+1);h.splice(_,0,{c:e,s:i,up:s,pr:r}),this!==n||a||n.wake()},r.removeEventListener=function(t,e){var i,s=this._listeners[t];if(s)for(i=s.length;--i>-1;)if(s[i].c===e)return s.splice(i,1),void 0},r.dispatchEvent=function(t){var e,i,s,r=this._listeners[t];if(r)for(e=r.length,i=this._eventTarget;--e>-1;)s=r[e],s.up?s.c.call(s.s||i,{type:t,target:i}):s.c.call(s.s||i)};var b=t.requestAnimationFrame,k=t.cancelAnimationFrame,A=Date.now||function(){return(new Date).getTime()},S=A();for(i=["ms","moz","webkit","o"],s=i.length;--s>-1&&!b;)b=t[i[s]+"RequestAnimationFrame"],k=t[i[s]+"CancelAnimationFrame"]||t[i[s]+"CancelRequestAnimationFrame"];d("Ticker",function(t,e){var i,s,r,o,l,h=this,_=A(),m=e!==!1&&b,f=function(t){S=A(),h.time=(S-_)/1e3;var e,n=h.time-l;(!i||n>0||t===!0)&&(h.frame++,l+=n+(n>=o?.004:o-n),e=!0),t!==!0&&(r=s(f)),e&&h.dispatchEvent("tick")};y.call(h),h.time=h.frame=0,h.tick=function(){f(!0)},h.sleep=function(){null!=r&&(m&&k?k(r):clearTimeout(r),s=u,r=null,h===n&&(a=!1))},h.wake=function(){null!==r&&h.sleep(),s=0===i?u:m&&b?b:function(t){return setTimeout(t,0|1e3*(l-h.time)+1)},h===n&&(a=!0),f(2)},h.fps=function(t){return arguments.length?(i=t,o=1/(i||60),l=this.time+o,h.wake(),void 0):i},h.useRAF=function(t){return arguments.length?(h.sleep(),m=t,h.fps(i),void 0):m},h.fps(t),setTimeout(function(){m&&(!r||5>h.frame)&&h.useRAF(!1)},1500)}),r=l.Ticker.prototype=new l.events.EventDispatcher,r.constructor=l.Ticker;var x=d("core.Animation",function(t,e){if(this.vars=e=e||{},this._duration=this._totalDuration=t||0,this._delay=Number(e.delay)||0,this._timeScale=1,this._active=e.immediateRender===!0,this.data=e.data,this._reversed=e.reversed===!0,Q){a||n.wake();var i=this.vars.useFrames?G:Q;i.add(this,i._time),this.vars.paused&&this.paused(!0)}});n=x.ticker=new l.Ticker,r=x.prototype,r._dirty=r._gc=r._initted=r._paused=!1,r._totalTime=r._time=0,r._rawPrevTime=-1,r._next=r._last=r._onUpdate=r._timeline=r.timeline=null,r._paused=!1;var C=function(){a&&A()-S>2e3&&n.wake(),setTimeout(C,2e3)};C(),r.play=function(t,e){return arguments.length&&this.seek(t,e),this.reversed(!1).paused(!1)},r.pause=function(t,e){return arguments.length&&this.seek(t,e),this.paused(!0)},r.resume=function(t,e){return arguments.length&&this.seek(t,e),this.paused(!1)},r.seek=function(t,e){return this.totalTime(Number(t),e!==!1)},r.restart=function(t,e){return this.reversed(!1).paused(!1).totalTime(t?-this._delay:0,e!==!1,!0)},r.reverse=function(t,e){return arguments.length&&this.seek(t||this.totalDuration(),e),this.reversed(!0).paused(!1)},r.render=function(){},r.invalidate=function(){return this},r.isActive=function(){var t,e=this._timeline,i=this._startTime;return!e||!this._gc&&!this._paused&&e.isActive()&&(t=e.rawTime())>=i&&i+this.totalDuration()/this._timeScale>t},r._enabled=function(t,e){return a||n.wake(),this._gc=!t,this._active=this.isActive(),e!==!0&&(t&&!this.timeline?this._timeline.add(this,this._startTime-this._delay):!t&&this.timeline&&this._timeline._remove(this,!0)),!1},r._kill=function(){return this._enabled(!1,!1)},r.kill=function(t,e){return this._kill(t,e),this},r._uncache=function(t){for(var e=t?this:this.timeline;e;)e._dirty=!0,e=e.timeline;return this},r._swapSelfInParams=function(t){for(var e=t.length,i=t.concat();--e>-1;)"{self}"===t[e]&&(i[e]=this);return i},r.eventCallback=function(t,e,i,s){if("on"===(t||"").substr(0,2)){var r=this.vars;if(1===arguments.length)return r[t];null==e?delete r[t]:(r[t]=e,r[t+"Params"]=m(i)&&-1!==i.join("").indexOf("{self}")?this._swapSelfInParams(i):i,r[t+"Scope"]=s),"onUpdate"===t&&(this._onUpdate=e)}return this},r.delay=function(t){return arguments.length?(this._timeline.smoothChildTiming&&this.startTime(this._startTime+t-this._delay),this._delay=t,this):this._delay},r.duration=function(t){return arguments.length?(this._duration=this._totalDuration=t,this._uncache(!0),this._timeline.smoothChildTiming&&this._time>0&&this._time<this._duration&&0!==t&&this.totalTime(this._totalTime*(t/this._duration),!0),this):(this._dirty=!1,this._duration)},r.totalDuration=function(t){return this._dirty=!1,arguments.length?this.duration(t):this._totalDuration},r.time=function(t,e){return arguments.length?(this._dirty&&this.totalDuration(),this.totalTime(t>this._duration?this._duration:t,e)):this._time},r.totalTime=function(t,e,i){if(a||n.wake(),!arguments.length)return this._totalTime;if(this._timeline){if(0>t&&!i&&(t+=this.totalDuration()),this._timeline.smoothChildTiming){this._dirty&&this.totalDuration();var s=this._totalDuration,r=this._timeline;if(t>s&&!i&&(t=s),this._startTime=(this._paused?this._pauseTime:r._time)-(this._reversed?s-t:t)/this._timeScale,r._dirty||this._uncache(!1),r._timeline)for(;r._timeline;)r._timeline._time!==(r._startTime+r._totalTime)/r._timeScale&&r.totalTime(r._totalTime,!0),r=r._timeline}this._gc&&this._enabled(!0,!1),(this._totalTime!==t||0===this._duration)&&this.render(t,e,!1)}return this},r.progress=r.totalProgress=function(t,e){return arguments.length?this.totalTime(this.duration()*t,e):this._time/this.duration()},r.startTime=function(t){return arguments.length?(t!==this._startTime&&(this._startTime=t,this.timeline&&this.timeline._sortChildren&&this.timeline.add(this,t-this._delay)),this):this._startTime},r.timeScale=function(t){if(!arguments.length)return this._timeScale;if(t=t||h,this._timeline&&this._timeline.smoothChildTiming){var e=this._pauseTime,i=e||0===e?e:this._timeline.totalTime();this._startTime=i-(i-this._startTime)*this._timeScale/t}return this._timeScale=t,this._uncache(!1)},r.reversed=function(t){return arguments.length?(t!=this._reversed&&(this._reversed=t,this.totalTime(this._timeline&&!this._timeline.smoothChildTiming?this.totalDuration()-this._totalTime:this._totalTime,!0)),this):this._reversed},r.paused=function(t){if(!arguments.length)return this._paused;if(t!=this._paused&&this._timeline){a||t||n.wake();var e=this._timeline,i=e.rawTime(),s=i-this._pauseTime;!t&&e.smoothChildTiming&&(this._startTime+=s,this._uncache(!1)),this._pauseTime=t?i:null,this._paused=t,this._active=this.isActive(),!t&&0!==s&&this._initted&&this.duration()&&this.render(e.smoothChildTiming?this._totalTime:(i-this._startTime)/this._timeScale,!0,!0)}return this._gc&&!t&&this._enabled(!0,!1),this};var R=d("core.SimpleTimeline",function(t){x.call(this,0,t),this.autoRemoveChildren=this.smoothChildTiming=!0});r=R.prototype=new x,r.constructor=R,r.kill()._gc=!1,r._first=r._last=null,r._sortChildren=!1,r.add=r.insert=function(t,e){var i,s;if(t._startTime=Number(e||0)+t._delay,t._paused&&this!==t._timeline&&(t._pauseTime=t._startTime+(this.rawTime()-t._startTime)/t._timeScale),t.timeline&&t.timeline._remove(t,!0),t.timeline=t._timeline=this,t._gc&&t._enabled(!0,!0),i=this._last,this._sortChildren)for(s=t._startTime;i&&i._startTime>s;)i=i._prev;return i?(t._next=i._next,i._next=t):(t._next=this._first,this._first=t),t._next?t._next._prev=t:this._last=t,t._prev=i,this._timeline&&this._uncache(!0),this},r._remove=function(t,e){return t.timeline===this&&(e||t._enabled(!1,!0),t.timeline=null,t._prev?t._prev._next=t._next:this._first===t&&(this._first=t._next),t._next?t._next._prev=t._prev:this._last===t&&(this._last=t._prev),this._timeline&&this._uncache(!0)),this},r.render=function(t,e,i){var s,r=this._first;for(this._totalTime=this._time=this._rawPrevTime=t;r;)s=r._next,(r._active||t>=r._startTime&&!r._paused)&&(r._reversed?r.render((r._dirty?r.totalDuration():r._totalDuration)-(t-r._startTime)*r._timeScale,e,i):r.render((t-r._startTime)*r._timeScale,e,i)),r=s},r.rawTime=function(){return a||n.wake(),this._totalTime};var D=d("TweenLite",function(e,i,s){if(x.call(this,i,s),this.render=D.prototype.render,null==e)throw"Cannot tween a null target.";this.target=e="string"!=typeof e?e:D.selector(e)||e;var r,n,a,o=e.jquery||e.length&&e!==t&&e[0]&&(e[0]===t||e[0].nodeType&&e[0].style&&!e.nodeType),l=this.vars.overwrite;if(this._overwrite=l=null==l?j[D.defaultOverwrite]:"number"==typeof l?l>>0:j[l],(o||e instanceof Array||e.push&&m(e))&&"number"!=typeof e[0])for(this._targets=a=_.call(e,0),this._propLookup=[],this._siblings=[],r=0;a.length>r;r++)n=a[r],n?"string"!=typeof n?n.length&&n!==t&&n[0]&&(n[0]===t||n[0].nodeType&&n[0].style&&!n.nodeType)?(a.splice(r--,1),this._targets=a=a.concat(_.call(n,0))):(this._siblings[r]=B(n,this,!1),1===l&&this._siblings[r].length>1&&q(n,this,null,1,this._siblings[r])):(n=a[r--]=D.selector(n),"string"==typeof n&&a.splice(r+1,1)):a.splice(r--,1);else this._propLookup={},this._siblings=B(e,this,!1),1===l&&this._siblings.length>1&&q(e,this,null,1,this._siblings);(this.vars.immediateRender||0===i&&0===this._delay&&this.vars.immediateRender!==!1)&&this.render(-this._delay,!1,!0)},!0),E=function(e){return e.length&&e!==t&&e[0]&&(e[0]===t||e[0].nodeType&&e[0].style&&!e.nodeType)},I=function(t,e){var i,s={};for(i in t)F[i]||i in e&&"x"!==i&&"y"!==i&&"width"!==i&&"height"!==i&&"className"!==i&&"border"!==i||!(!N[i]||N[i]&&N[i]._autoCSS)||(s[i]=t[i],delete t[i]);t.css=s};r=D.prototype=new x,r.constructor=D,r.kill()._gc=!1,r.ratio=0,r._firstPT=r._targets=r._overwrittenProps=r._startAt=null,r._notifyPluginsOfEnabled=!1,D.version="1.11.4",D.defaultEase=r._ease=new T(null,null,1,1),D.defaultOverwrite="auto",D.ticker=n,D.autoSleep=!0,D.selector=t.$||t.jQuery||function(e){return t.$?(D.selector=t.$,t.$(e)):t.document?t.document.getElementById("#"===e.charAt(0)?e.substr(1):e):e};var O=D._internals={isArray:m,isSelector:E},N=D._plugins={},L=D._tweenLookup={},U=0,F=O.reservedProps={ease:1,delay:1,overwrite:1,onComplete:1,onCompleteParams:1,onCompleteScope:1,useFrames:1,runBackwards:1,startAt:1,onUpdate:1,onUpdateParams:1,onUpdateScope:1,onStart:1,onStartParams:1,onStartScope:1,onReverseComplete:1,onReverseCompleteParams:1,onReverseCompleteScope:1,onRepeat:1,onRepeatParams:1,onRepeatScope:1,easeParams:1,yoyo:1,immediateRender:1,repeat:1,repeatDelay:1,data:1,paused:1,reversed:1,autoCSS:1},j={none:0,all:1,auto:2,concurrent:3,allOnStart:4,preexisting:5,"true":1,"false":0},G=x._rootFramesTimeline=new R,Q=x._rootTimeline=new R;Q._startTime=n.time,G._startTime=n.frame,Q._active=G._active=!0,x._updateRoot=function(){if(Q.render((n.time-Q._startTime)*Q._timeScale,!1,!1),G.render((n.frame-G._startTime)*G._timeScale,!1,!1),!(n.frame%120)){var t,e,i;for(i in L){for(e=L[i].tweens,t=e.length;--t>-1;)e[t]._gc&&e.splice(t,1);0===e.length&&delete L[i]}if(i=Q._first,(!i||i._paused)&&D.autoSleep&&!G._first&&1===n._listeners.tick.length){for(;i&&i._paused;)i=i._next;i||n.sleep()}}},n.addEventListener("tick",x._updateRoot);var B=function(t,e,i){var s,r,n=t._gsTweenID;if(L[n||(t._gsTweenID=n="t"+U++)]||(L[n]={target:t,tweens:[]}),e&&(s=L[n].tweens,s[r=s.length]=e,i))for(;--r>-1;)s[r]===e&&s.splice(r,1);return L[n].tweens},q=function(t,e,i,s,r){var n,a,o,l;if(1===s||s>=4){for(l=r.length,n=0;l>n;n++)if((o=r[n])!==e)o._gc||o._enabled(!1,!1)&&(a=!0);else if(5===s)break;return a}var _,u=e._startTime+h,m=[],f=0,p=0===e._duration;for(n=r.length;--n>-1;)(o=r[n])===e||o._gc||o._paused||(o._timeline!==e._timeline?(_=_||$(e,0,p),0===$(o,_,p)&&(m[f++]=o)):u>=o._startTime&&o._startTime+o.totalDuration()/o._timeScale>u&&((p||!o._initted)&&2e-10>=u-o._startTime||(m[f++]=o)));for(n=f;--n>-1;)o=m[n],2===s&&o._kill(i,t)&&(a=!0),(2!==s||!o._firstPT&&o._initted)&&o._enabled(!1,!1)&&(a=!0);return a},$=function(t,e,i){for(var s=t._timeline,r=s._timeScale,n=t._startTime;s._timeline;){if(n+=s._startTime,r*=s._timeScale,s._paused)return-100;s=s._timeline}return n/=r,n>e?n-e:i&&n===e||!t._initted&&2*h>n-e?h:(n+=t.totalDuration()/t._timeScale/r)>e+h?0:n-e-h};r._init=function(){var t,e,i,s,r=this.vars,n=this._overwrittenProps,a=this._duration,o=r.immediateRender,l=r.ease;if(r.startAt){if(this._startAt&&this._startAt.render(-1,!0),r.startAt.overwrite=0,r.startAt.immediateRender=!0,this._startAt=D.to(this.target,0,r.startAt),o)if(this._time>0)this._startAt=null;else if(0!==a)return}else if(r.runBackwards&&0!==a)if(this._startAt)this._startAt.render(-1,!0),this._startAt=null;else{i={};for(s in r)F[s]&&"autoCSS"!==s||(i[s]=r[s]);if(i.overwrite=0,i.data="isFromStart",this._startAt=D.to(this.target,0,i),r.immediateRender){if(0===this._time)return}else this._startAt.render(-1,!0)}if(this._ease=l?l instanceof T?r.easeParams instanceof Array?l.config.apply(l,r.easeParams):l:"function"==typeof l?new T(l,r.easeParams):w[l]||D.defaultEase:D.defaultEase,this._easeType=this._ease._type,this._easePower=this._ease._power,this._firstPT=null,this._targets)for(t=this._targets.length;--t>-1;)this._initProps(this._targets[t],this._propLookup[t]={},this._siblings[t],n?n[t]:null)&&(e=!0);else e=this._initProps(this.target,this._propLookup,this._siblings,n);if(e&&D._onPluginEvent("_onInitAllProps",this),n&&(this._firstPT||"function"!=typeof this.target&&this._enabled(!1,!1)),r.runBackwards)for(i=this._firstPT;i;)i.s+=i.c,i.c=-i.c,i=i._next;this._onUpdate=r.onUpdate,this._initted=!0},r._initProps=function(e,i,s,r){var n,a,o,l,h,_;if(null==e)return!1;this.vars.css||e.style&&e!==t&&e.nodeType&&N.css&&this.vars.autoCSS!==!1&&I(this.vars,e);for(n in this.vars){if(_=this.vars[n],F[n])_&&(_ instanceof Array||_.push&&m(_))&&-1!==_.join("").indexOf("{self}")&&(this.vars[n]=_=this._swapSelfInParams(_,this));else if(N[n]&&(l=new N[n])._onInitTween(e,this.vars[n],this)){for(this._firstPT=h={_next:this._firstPT,t:l,p:"setRatio",s:0,c:1,f:!0,n:n,pg:!0,pr:l._priority},a=l._overwriteProps.length;--a>-1;)i[l._overwriteProps[a]]=this._firstPT;(l._priority||l._onInitAllProps)&&(o=!0),(l._onDisable||l._onEnable)&&(this._notifyPluginsOfEnabled=!0)}else this._firstPT=i[n]=h={_next:this._firstPT,t:e,p:n,f:"function"==typeof e[n],n:n,pg:!1,pr:0},h.s=h.f?e[n.indexOf("set")||"function"!=typeof e["get"+n.substr(3)]?n:"get"+n.substr(3)]():parseFloat(e[n]),h.c="string"==typeof _&&"="===_.charAt(1)?parseInt(_.charAt(0)+"1",10)*Number(_.substr(2)):Number(_)-h.s||0;h&&h._next&&(h._next._prev=h)}return r&&this._kill(r,e)?this._initProps(e,i,s,r):this._overwrite>1&&this._firstPT&&s.length>1&&q(e,this,i,this._overwrite,s)?(this._kill(i,e),this._initProps(e,i,s,r)):o},r.render=function(t,e,i){var s,r,n,a,o=this._time,l=this._duration;if(t>=l)this._totalTime=this._time=l,this.ratio=this._ease._calcEnd?this._ease.getRatio(1):1,this._reversed||(s=!0,r="onComplete"),0===l&&(a=this._rawPrevTime,(0===t||0>a||a===h)&&a!==t&&(i=!0,a>h&&(r="onReverseComplete")),this._rawPrevTime=a=!e||t||0===a?t:h);else if(1e-7>t)this._totalTime=this._time=0,this.ratio=this._ease._calcEnd?this._ease.getRatio(0):0,(0!==o||0===l&&this._rawPrevTime>h)&&(r="onReverseComplete",s=this._reversed),0>t?(this._active=!1,0===l&&(this._rawPrevTime>=0&&(i=!0),this._rawPrevTime=a=!e||t||0===this._rawPrevTime?t:h)):this._initted||(i=!0);else if(this._totalTime=this._time=t,this._easeType){var _=t/l,u=this._easeType,m=this._easePower;(1===u||3===u&&_>=.5)&&(_=1-_),3===u&&(_*=2),1===m?_*=_:2===m?_*=_*_:3===m?_*=_*_*_:4===m&&(_*=_*_*_*_),this.ratio=1===u?1-_:2===u?_:.5>t/l?_/2:1-_/2}else this.ratio=this._ease.getRatio(t/l);if(this._time!==o||i){if(!this._initted){if(this._init(),!this._initted||this._gc)return;this._time&&!s?this.ratio=this._ease.getRatio(this._time/l):s&&this._ease._calcEnd&&(this.ratio=this._ease.getRatio(0===this._time?0:1))}for(this._active||!this._paused&&this._time!==o&&t>=0&&(this._active=!0),0===o&&(this._startAt&&(t>=0?this._startAt.render(t,e,i):r||(r="_dummyGS")),this.vars.onStart&&(0!==this._time||0===l)&&(e||this.vars.onStart.apply(this.vars.onStartScope||this,this.vars.onStartParams||g))),n=this._firstPT;n;)n.f?n.t[n.p](n.c*this.ratio+n.s):n.t[n.p]=n.c*this.ratio+n.s,n=n._next;this._onUpdate&&(0>t&&this._startAt&&this._startTime&&this._startAt.render(t,e,i),e||(this._time!==o||s)&&this._onUpdate.apply(this.vars.onUpdateScope||this,this.vars.onUpdateParams||g)),r&&(this._gc||(0>t&&this._startAt&&!this._onUpdate&&this._startTime&&this._startAt.render(t,e,i),s&&(this._timeline.autoRemoveChildren&&this._enabled(!1,!1),this._active=!1),!e&&this.vars[r]&&this.vars[r].apply(this.vars[r+"Scope"]||this,this.vars[r+"Params"]||g),0===l&&this._rawPrevTime===h&&a!==h&&(this._rawPrevTime=0)))}},r._kill=function(t,e){if("all"===t&&(t=null),null==t&&(null==e||e===this.target))return this._enabled(!1,!1);e="string"!=typeof e?e||this._targets||this.target:D.selector(e)||e;var i,s,r,n,a,o,l,h;if((m(e)||E(e))&&"number"!=typeof e[0])for(i=e.length;--i>-1;)this._kill(t,e[i])&&(o=!0);else{if(this._targets){for(i=this._targets.length;--i>-1;)if(e===this._targets[i]){a=this._propLookup[i]||{},this._overwrittenProps=this._overwrittenProps||[],s=this._overwrittenProps[i]=t?this._overwrittenProps[i]||{}:"all";break}}else{if(e!==this.target)return!1;a=this._propLookup,s=this._overwrittenProps=t?this._overwrittenProps||{}:"all"}if(a){l=t||a,h=t!==s&&"all"!==s&&t!==a&&("object"!=typeof t||!t._tempKill);for(r in l)(n=a[r])&&(n.pg&&n.t._kill(l)&&(o=!0),n.pg&&0!==n.t._overwriteProps.length||(n._prev?n._prev._next=n._next:n===this._firstPT&&(this._firstPT=n._next),n._next&&(n._next._prev=n._prev),n._next=n._prev=null),delete a[r]),h&&(s[r]=1);!this._firstPT&&this._initted&&this._enabled(!1,!1)}}return o},r.invalidate=function(){return this._notifyPluginsOfEnabled&&D._onPluginEvent("_onDisable",this),this._firstPT=null,this._overwrittenProps=null,this._onUpdate=null,this._startAt=null,this._initted=this._active=this._notifyPluginsOfEnabled=!1,this._propLookup=this._targets?{}:[],this},r._enabled=function(t,e){if(a||n.wake(),t&&this._gc){var i,s=this._targets;if(s)for(i=s.length;--i>-1;)this._siblings[i]=B(s[i],this,!0);else this._siblings=B(this.target,this,!0)}return x.prototype._enabled.call(this,t,e),this._notifyPluginsOfEnabled&&this._firstPT?D._onPluginEvent(t?"_onEnable":"_onDisable",this):!1},D.to=function(t,e,i){return new D(t,e,i)},D.from=function(t,e,i){return i.runBackwards=!0,i.immediateRender=0!=i.immediateRender,new D(t,e,i)},D.fromTo=function(t,e,i,s){return s.startAt=i,s.immediateRender=0!=s.immediateRender&&0!=i.immediateRender,new D(t,e,s)},D.delayedCall=function(t,e,i,s,r){return new D(e,0,{delay:t,onComplete:e,onCompleteParams:i,onCompleteScope:s,onReverseComplete:e,onReverseCompleteParams:i,onReverseCompleteScope:s,immediateRender:!1,useFrames:r,overwrite:0})},D.set=function(t,e){return new D(t,0,e)},D.getTweensOf=function(t,e){if(null==t)return[];t="string"!=typeof t?t:D.selector(t)||t;var i,s,r,n;if((m(t)||E(t))&&"number"!=typeof t[0]){for(i=t.length,s=[];--i>-1;)s=s.concat(D.getTweensOf(t[i],e));for(i=s.length;--i>-1;)for(n=s[i],r=i;--r>-1;)n===s[r]&&s.splice(i,1)}else for(s=B(t).concat(),i=s.length;--i>-1;)(s[i]._gc||e&&!s[i].isActive())&&s.splice(i,1);return s},D.killTweensOf=D.killDelayedCallsTo=function(t,e,i){"object"==typeof e&&(i=e,e=!1);for(var s=D.getTweensOf(t,e),r=s.length;--r>-1;)s[r]._kill(i,t)};var M=d("plugins.TweenPlugin",function(t,e){this._overwriteProps=(t||"").split(","),this._propName=this._overwriteProps[0],this._priority=e||0,this._super=M.prototype},!0);if(r=M.prototype,M.version="1.10.1",M.API=2,r._firstPT=null,r._addTween=function(t,e,i,s,r,n){var a,o;return null!=s&&(a="number"==typeof s||"="!==s.charAt(1)?Number(s)-i:parseInt(s.charAt(0)+"1",10)*Number(s.substr(2)))?(this._firstPT=o={_next:this._firstPT,t:t,p:e,s:i,c:a,f:"function"==typeof t[e],n:r||e,r:n},o._next&&(o._next._prev=o),o):void 0},r.setRatio=function(t){for(var e,i=this._firstPT,s=1e-6;i;)e=i.c*t+i.s,i.r?e=0|e+(e>0?.5:-.5):s>e&&e>-s&&(e=0),i.f?i.t[i.p](e):i.t[i.p]=e,i=i._next},r._kill=function(t){var e,i=this._overwriteProps,s=this._firstPT;if(null!=t[this._propName])this._overwriteProps=[];else for(e=i.length;--e>-1;)null!=t[i[e]]&&i.splice(e,1);for(;s;)null!=t[s.n]&&(s._next&&(s._next._prev=s._prev),s._prev?(s._prev._next=s._next,s._prev=null):this._firstPT===s&&(this._firstPT=s._next)),s=s._next;return!1},r._roundProps=function(t,e){for(var i=this._firstPT;i;)(t[this._propName]||null!=i.n&&t[i.n.split(this._propName+"_").join("")])&&(i.r=e),i=i._next},D._onPluginEvent=function(t,e){var i,s,r,n,a,o=e._firstPT;if("_onInitAllProps"===t){for(;o;){for(a=o._next,s=r;s&&s.pr>o.pr;)s=s._next;(o._prev=s?s._prev:n)?o._prev._next=o:r=o,(o._next=s)?s._prev=o:n=o,o=a}o=e._firstPT=r}for(;o;)o.pg&&"function"==typeof o.t[t]&&o.t[t]()&&(i=!0),o=o._next;return i},M.activate=function(t){for(var e=t.length;--e>-1;)t[e].API===M.API&&(N[(new t[e])._propName]=t[e]);return!0},c.plugin=function(t){if(!(t&&t.propName&&t.init&&t.API))throw"illegal plugin definition.";var e,i=t.propName,s=t.priority||0,r=t.overwriteProps,n={init:"_onInitTween",set:"setRatio",kill:"_kill",round:"_roundProps",initAll:"_onInitAllProps"},a=d("plugins."+i.charAt(0).toUpperCase()+i.substr(1)+"Plugin",function(){M.call(this,i,s),this._overwriteProps=r||[]},t.global===!0),o=a.prototype=new M(i);o.constructor=a,a.API=t.API;for(e in n)"function"==typeof t[e]&&(o[n[e]]=t[e]);return a.version=t.version,M.activate([a]),a},i=t._gsQueue){for(s=0;i.length>s;s++)i[s]();for(r in f)f[r].func||t.console.log("GSAP encountered missing dependency: com.greensock."+r)}a=!1}})(window);;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Bleach bypass shader [http://en.wikipedia.org/wiki/Bleach_bypass]
+ * - based on Nvidia example
+ * http://developer.download.nvidia.com/shaderlibrary/webpages/shader_library.html#post_bleach_bypass
+ */
 
-// requestAnimationFrame polyfill by Erik Möller
-// fixes from Paul Irish and Tino Zijdel
+THREE.BleachBypassShader = {
 
-(function() {
-    var lastTime = 0;
-    var vendors = ['ms', 'moz', 'webkit', 'o'];
-    for(var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
-        window.requestAnimationFrame = window[vendors[x]+'RequestAnimationFrame'];
-        window.cancelAnimationFrame = window[vendors[x]+'CancelAnimationFrame'] 
-                                   || window[vendors[x]+'CancelRequestAnimationFrame'];
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"opacity":  { type: "f", value: 1.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform float opacity;",
+
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec4 base = texture2D( tDiffuse, vUv );",
+
+			"vec3 lumCoeff = vec3( 0.25, 0.65, 0.1 );",
+			"float lum = dot( lumCoeff, base.rgb );",
+			"vec3 blend = vec3( lum );",
+
+			"float L = min( 1.0, max( 0.0, 10.0 * ( lum - 0.45 ) ) );",
+
+			"vec3 result1 = 2.0 * base.rgb * blend;",
+			"vec3 result2 = 1.0 - 2.0 * ( 1.0 - blend ) * ( 1.0 - base.rgb );",
+
+			"vec3 newColor = mix( result1, result2, L );",
+
+			"float A2 = opacity * base.a;",
+			"vec3 mixRGB = A2 * newColor.rgb;",
+			"mixRGB += ( ( 1.0 - A2 ) * base.rgb );",
+
+			"gl_FragColor = vec4( mixRGB, base.a );",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Colorify shader
+ */
+
+THREE.ColorifyShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"color":    { type: "c", value: new THREE.Color( 0xffffff ) }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform vec3 color;",
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec4 texel = texture2D( tDiffuse, vUv );",
+
+			"vec3 luma = vec3( 0.299, 0.587, 0.114 );",
+			"float v = dot( texel.xyz, luma );",
+
+			"gl_FragColor = vec4( v * color, texel.w );",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Convolution shader
+ * ported from o3d sample to WebGL / GLSL
+ * http://o3d.googlecode.com/svn/trunk/samples/convolution.html
+ */
+
+THREE.ConvolutionShader = {
+
+	defines: {
+
+		"KERNEL_SIZE_FLOAT": "25.0",
+		"KERNEL_SIZE_INT": "25",
+
+	},
+
+	uniforms: {
+
+		"tDiffuse":        { type: "t", value: null },
+		"uImageIncrement": { type: "v2", value: new THREE.Vector2( 0.001953125, 0.0 ) },
+		"cKernel":         { type: "fv1", value: [] }
+
+	},
+
+	vertexShader: [
+
+		"uniform vec2 uImageIncrement;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv - ( ( KERNEL_SIZE_FLOAT - 1.0 ) / 2.0 ) * uImageIncrement;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform float cKernel[ KERNEL_SIZE_INT ];",
+
+		"uniform sampler2D tDiffuse;",
+		"uniform vec2 uImageIncrement;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec2 imageCoord = vUv;",
+			"vec4 sum = vec4( 0.0, 0.0, 0.0, 0.0 );",
+
+			"for( int i = 0; i < KERNEL_SIZE_INT; i ++ ) {",
+
+				"sum += texture2D( tDiffuse, imageCoord ) * cKernel[ i ];",
+				"imageCoord += uImageIncrement;",
+
+			"}",
+
+			"gl_FragColor = sum;",
+
+		"}"
+
+
+	].join("\n"),
+
+	buildKernel: function ( sigma ) {
+
+		// We lop off the sqrt(2 * pi) * sigma term, since we're going to normalize anyway.
+
+		function gauss( x, sigma ) {
+
+			return Math.exp( - ( x * x ) / ( 2.0 * sigma * sigma ) );
+
+		}
+
+		var i, values, sum, halfWidth, kMaxKernelSize = 25, kernelSize = 2 * Math.ceil( sigma * 3.0 ) + 1;
+
+		if ( kernelSize > kMaxKernelSize ) kernelSize = kMaxKernelSize;
+		halfWidth = ( kernelSize - 1 ) * 0.5;
+
+		values = new Array( kernelSize );
+		sum = 0.0;
+		for ( i = 0; i < kernelSize; ++i ) {
+
+			values[ i ] = gauss( i - halfWidth, sigma );
+			sum += values[ i ];
+
+		}
+
+		// normalize the kernel
+
+		for ( i = 0; i < kernelSize; ++i ) values[ i ] /= sum;
+
+		return values;
+
+	}
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Full-screen textured quad shader
+ */
+
+THREE.CopyShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"opacity":  { type: "f", value: 1.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform float opacity;",
+
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec4 texel = texture2D( tDiffuse, vUv );",
+			"gl_FragColor = opacity * texel;",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Dot screen shader
+ * based on glfx.js sepia shader
+ * https://github.com/evanw/glfx.js
+ */
+
+THREE.DotScreenShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"tSize":    { type: "v2", value: new THREE.Vector2( 256, 256 ) },
+		"center":   { type: "v2", value: new THREE.Vector2( 0.5, 0.5 ) },
+		"angle":    { type: "f", value: 1.57 },
+		"scale":    { type: "f", value: 1.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform vec2 center;",
+		"uniform float angle;",
+		"uniform float scale;",
+		"uniform vec2 tSize;",
+
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"float pattern() {",
+
+			"float s = sin( angle ), c = cos( angle );",
+
+			"vec2 tex = vUv * tSize - center;",
+			"vec2 point = vec2( c * tex.x - s * tex.y, s * tex.x + c * tex.y ) * scale;",
+
+			"return ( sin( point.x ) * sin( point.y ) ) * 4.0;",
+
+		"}",
+
+		"void main() {",
+
+			"vec4 color = texture2D( tDiffuse, vUv );",
+
+			"float average = ( color.r + color.g + color.b ) / 3.0;",
+
+			"gl_FragColor = vec4( vec3( average * 10.0 - 5.0 + pattern() ), color.a );",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Film grain & scanlines shader
+ *
+ * - ported from HLSL to WebGL / GLSL
+ * http://www.truevision3d.com/forums/showcase/staticnoise_colorblackwhite_scanline_shaders-t18698.0.html
+ *
+ * Screen Space Static Postprocessor
+ *
+ * Produces an analogue noise overlay similar to a film grain / TV static
+ *
+ * Original implementation and noise algorithm
+ * Pat 'Hawthorne' Shearon
+ *
+ * Optimized scanlines + noise version with intensity scaling
+ * Georg 'Leviathan' Steinrohder
+ *
+ * This version is provided under a Creative Commons Attribution 3.0 License
+ * http://creativecommons.org/licenses/by/3.0/
+ */
+
+THREE.FilmShader = {
+
+	uniforms: {
+
+		"tDiffuse":   { type: "t", value: null },
+		"time":       { type: "f", value: 0.0 },
+		"nIntensity": { type: "f", value: 0.5 },
+		"sIntensity": { type: "f", value: 0.05 },
+		"sCount":     { type: "f", value: 4096 },
+		"grayscale":  { type: "i", value: 1 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		// control parameter
+		"uniform float time;",
+
+		"uniform bool grayscale;",
+
+		// noise effect intensity value (0 = no effect, 1 = full effect)
+		"uniform float nIntensity;",
+
+		// scanlines effect intensity value (0 = no effect, 1 = full effect)
+		"uniform float sIntensity;",
+
+		// scanlines effect count value (0 = no effect, 4096 = full effect)
+		"uniform float sCount;",
+
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			// sample the source
+			"vec4 cTextureScreen = texture2D( tDiffuse, vUv );",
+
+			// make some noise
+			"float x = vUv.x * vUv.y * time *  1000.0;",
+			"x = mod( x, 13.0 ) * mod( x, 123.0 );",
+			"float dx = mod( x, 0.01 );",
+
+			// add noise
+			"vec3 cResult = cTextureScreen.rgb + cTextureScreen.rgb * clamp( 0.1 + dx * 100.0, 0.0, 1.0 );",
+
+			// get us a sine and cosine
+			"vec2 sc = vec2( sin( vUv.y * sCount ), cos( vUv.y * sCount ) );",
+
+			// add scanlines
+			"cResult += cTextureScreen.rgb * vec3( sc.x, sc.y, sc.x ) * sIntensity;",
+
+			// interpolate between source and result by intensity
+			"cResult = cTextureScreen.rgb + clamp( nIntensity, 0.0,1.0 ) * ( cResult - cTextureScreen.rgb );",
+
+			// convert to grayscale if desired
+			"if( grayscale ) {",
+
+				"cResult = vec3( cResult.r * 0.3 + cResult.g * 0.59 + cResult.b * 0.11 );",
+
+			"}",
+
+			"gl_FragColor =  vec4( cResult, cTextureScreen.a );",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author zz85 / http://www.lab4games.net/zz85/blog
+ *
+ * Two pass Gaussian blur filter (horizontal and vertical blur shaders)
+ * - described in http://www.gamerendering.com/2008/10/11/gaussian-blur-filter-shader/
+ *   and used in http://www.cake23.de/traveling-wavefronts-lit-up.html
+ *
+ * - 9 samples per pass
+ * - standard deviation 2.7
+ * - "h" and "v" parameters should be set to "1 / width" and "1 / height"
+ */
+
+THREE.HorizontalBlurShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"h":        { type: "f", value: 1.0 / 512.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform sampler2D tDiffuse;",
+		"uniform float h;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec4 sum = vec4( 0.0 );",
+
+			"sum += texture2D( tDiffuse, vec2( vUv.x - 4.0 * h, vUv.y ) ) * 0.051;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x - 3.0 * h, vUv.y ) ) * 0.0918;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x - 2.0 * h, vUv.y ) ) * 0.12245;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x - 1.0 * h, vUv.y ) ) * 0.1531;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y ) ) * 0.1633;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x + 1.0 * h, vUv.y ) ) * 0.1531;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x + 2.0 * h, vUv.y ) ) * 0.12245;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x + 3.0 * h, vUv.y ) ) * 0.0918;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x + 4.0 * h, vUv.y ) ) * 0.051;",
+
+			"gl_FragColor = sum;",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Sepia tone shader
+ * based on glfx.js sepia shader
+ * https://github.com/evanw/glfx.js
+ */
+
+THREE.SepiaShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"amount":   { type: "f", value: 1.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform float amount;",
+
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec4 color = texture2D( tDiffuse, vUv );",
+			"vec3 c = color.rgb;",
+
+			"color.r = dot( c, vec3( 1.0 - 0.607 * amount, 0.769 * amount, 0.189 * amount ) );",
+			"color.g = dot( c, vec3( 0.349 * amount, 1.0 - 0.314 * amount, 0.168 * amount ) );",
+			"color.b = dot( c, vec3( 0.272 * amount, 0.534 * amount, 1.0 - 0.869 * amount ) );",
+
+			"gl_FragColor = vec4( min( vec3( 1.0 ), color.rgb ), color.a );",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author zz85 / http://www.lab4games.net/zz85/blog
+ *
+ * Two pass Gaussian blur filter (horizontal and vertical blur shaders)
+ * - described in http://www.gamerendering.com/2008/10/11/gaussian-blur-filter-shader/
+ *   and used in http://www.cake23.de/traveling-wavefronts-lit-up.html
+ *
+ * - 9 samples per pass
+ * - standard deviation 2.7
+ * - "h" and "v" parameters should be set to "1 / width" and "1 / height"
+ */
+
+THREE.VerticalBlurShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"v":        { type: "f", value: 1.0 / 512.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform sampler2D tDiffuse;",
+		"uniform float v;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vec4 sum = vec4( 0.0 );",
+
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 4.0 * v ) ) * 0.051;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 3.0 * v ) ) * 0.0918;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 2.0 * v ) ) * 0.12245;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y - 1.0 * v ) ) * 0.1531;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y ) ) * 0.1633;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 1.0 * v ) ) * 0.1531;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 2.0 * v ) ) * 0.12245;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 3.0 * v ) ) * 0.0918;",
+			"sum += texture2D( tDiffuse, vec2( vUv.x, vUv.y + 4.0 * v ) ) * 0.051;",
+
+			"gl_FragColor = sum;",
+
+		"}"
+
+	].join("\n")
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * Vignette shader
+ * based on PaintEffect postprocess from ro.me
+ * http://code.google.com/p/3-dreams-of-black/source/browse/deploy/js/effects/PaintEffect.js
+ */
+
+THREE.VignetteShader = {
+
+	uniforms: {
+
+		"tDiffuse": { type: "t", value: null },
+		"offset":   { type: "f", value: 1.0 },
+		"darkness": { type: "f", value: 1.0 }
+
+	},
+
+	vertexShader: [
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			"vUv = uv;",
+			"gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+
+		"}"
+
+	].join("\n"),
+
+	fragmentShader: [
+
+		"uniform float offset;",
+		"uniform float darkness;",
+
+		"uniform sampler2D tDiffuse;",
+
+		"varying vec2 vUv;",
+
+		"void main() {",
+
+			// Eskil's vignette
+
+			"vec4 texel = texture2D( tDiffuse, vUv );",
+			"vec2 uv = ( vUv - vec2( 0.5 ) ) * vec2( offset );",
+			"gl_FragColor = vec4( mix( texel.rgb, vec3( 1.0 - darkness ), dot( uv, uv ) ), texel.a );",
+
+			/*
+			// alternative version from glfx.js
+			// this one makes more "dusty" look (as opposed to "burned")
+
+			"vec4 color = texture2D( tDiffuse, vUv );",
+			"float dist = distance( vUv, vec2( 0.5 ) );",
+			"color.rgb *= smoothstep( 0.8, offset * 0.799, dist *( darkness + offset ) );",
+			"gl_FragColor = color;",
+			*/
+
+		"}"
+
+	].join("\n")
+
+};
+;
+
+THREE.GlowShader = function(cameraPosition, color){
+    return new THREE.ShaderMaterial(
+    {
+
+        uniforms: {
+            "c": { type: "f", value: 0.2 },
+            "p": { type: "f", value: 1.4 },
+            glowColor: { type: "c", value: color },
+            viewVector: { type: "v3", value: cameraPosition },
+        },
+
+        vertexShader: [
+            "uniform vec3 viewVector;",
+            "uniform float c;",
+            "uniform float p;",
+            "varying float intensity;",
+
+            "void main()",
+            "{",
+                "vec3 vNormal = normalize( normalMatrix * normal );",
+                "vec3 vNormel = normalize( normalMatrix * viewVector );",
+                "intensity = pow( c - dot(vNormal, vNormel), p );",
+                "gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );",
+            "}"
+        ].join('\n'),
+
+        fragmentShader: [
+            "uniform vec3 glowColor;",
+            "varying float intensity;",
+
+            "void main()",
+            "{",
+                "vec3 glow = glowColor * intensity;",
+                "gl_FragColor = vec4( glow, 1.0 );",
+            "}"
+        ].join('\n'),
+        side: THREE.FrontSide,
+        blending: THREE.AdditiveBlending,
+        transparent: true
+    }   );
+}
+
+
+
+
+
+
+
+
+
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.EffectComposer = function ( renderer, renderTarget ) {
+
+	this.renderer = renderer;
+
+	if ( renderTarget === undefined ) {
+
+		var width = window.innerWidth || 1;
+		var height = window.innerHeight || 1;
+		var parameters = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat, stencilBuffer: false };
+
+		renderTarget = new THREE.WebGLRenderTarget( width, height, parameters );
+
+	}
+
+	this.renderTarget1 = renderTarget;
+	this.renderTarget2 = renderTarget.clone();
+
+	this.writeBuffer = this.renderTarget1;
+	this.readBuffer = this.renderTarget2;
+
+	this.passes = [];
+
+	if ( THREE.CopyShader === undefined )
+		console.error( "THREE.EffectComposer relies on THREE.CopyShader" );
+
+	this.copyPass = new THREE.ShaderPass( THREE.CopyShader );
+
+};
+
+THREE.EffectComposer.prototype = {
+
+	swapBuffers: function() {
+
+		var tmp = this.readBuffer;
+		this.readBuffer = this.writeBuffer;
+		this.writeBuffer = tmp;
+
+	},
+
+	addPass: function ( pass ) {
+
+		this.passes.push( pass );
+
+	},
+
+	insertPass: function ( pass, index ) {
+
+		this.passes.splice( index, 0, pass );
+
+	},
+
+	render: function ( delta ) {
+
+		this.writeBuffer = this.renderTarget1;
+		this.readBuffer = this.renderTarget2;
+
+		var maskActive = false;
+
+		var pass, i, il = this.passes.length;
+
+		for ( i = 0; i < il; i ++ ) {
+
+			pass = this.passes[ i ];
+
+			if ( !pass.enabled ) continue;
+
+			pass.render( this.renderer, this.writeBuffer, this.readBuffer, delta, maskActive );
+
+			if ( pass.needsSwap ) {
+
+				if ( maskActive ) {
+
+					var context = this.renderer.context;
+
+					context.stencilFunc( context.NOTEQUAL, 1, 0xffffffff );
+
+					this.copyPass.render( this.renderer, this.writeBuffer, this.readBuffer, delta );
+
+					context.stencilFunc( context.EQUAL, 1, 0xffffffff );
+
+				}
+
+				this.swapBuffers();
+
+			}
+
+			if ( pass instanceof THREE.MaskPass ) {
+
+				maskActive = true;
+
+			} else if ( pass instanceof THREE.ClearMaskPass ) {
+
+				maskActive = false;
+
+			}
+
+		}
+
+	},
+
+	reset: function ( renderTarget ) {
+
+		if ( renderTarget === undefined ) {
+
+			renderTarget = this.renderTarget1.clone();
+
+			renderTarget.width = window.innerWidth;
+			renderTarget.height = window.innerHeight;
+
+		}
+
+		this.renderTarget1 = renderTarget;
+		this.renderTarget2 = renderTarget.clone();
+
+		this.writeBuffer = this.renderTarget1;
+		this.readBuffer = this.renderTarget2;
+
+	},
+
+	setSize: function ( width, height ) {
+
+		var renderTarget = this.renderTarget1.clone();
+
+		renderTarget.width = width;
+		renderTarget.height = height;
+
+		this.reset( renderTarget );
+
+	}
+
+};
+
+// shared ortho camera
+
+THREE.EffectComposer.camera = new THREE.OrthographicCamera( -1, 1, 1, -1, 0, 1 );
+
+THREE.EffectComposer.quad = new THREE.Mesh( new THREE.PlaneGeometry( 2, 2 ), null );
+
+THREE.EffectComposer.scene = new THREE.Scene();
+THREE.EffectComposer.scene.add( THREE.EffectComposer.quad );
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.RenderPass = function ( scene, camera, overrideMaterial, clearColor, clearAlpha ) {
+
+	this.scene = scene;
+	this.camera = camera;
+
+	this.overrideMaterial = overrideMaterial;
+
+	this.clearColor = clearColor;
+	this.clearAlpha = ( clearAlpha !== undefined ) ? clearAlpha : 1;
+
+	this.oldClearColor = new THREE.Color();
+	this.oldClearAlpha = 1;
+
+	this.enabled = true;
+	this.clear = true;
+	this.needsSwap = false;
+
+};
+
+THREE.RenderPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		this.scene.overrideMaterial = this.overrideMaterial;
+
+		if ( this.clearColor ) {
+
+			this.oldClearColor.copy( renderer.getClearColor() );
+			this.oldClearAlpha = renderer.getClearAlpha();
+
+			renderer.setClearColor( this.clearColor, this.clearAlpha );
+
+		}
+
+		renderer.render( this.scene, this.camera, readBuffer, this.clear );
+
+		if ( this.clearColor ) {
+
+			renderer.setClearColor( this.oldClearColor, this.oldClearAlpha );
+
+		}
+
+		this.scene.overrideMaterial = null;
+
+	}
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.BloomPass = function ( strength, kernelSize, sigma, resolution ) {
+
+	strength = ( strength !== undefined ) ? strength : 1;
+	kernelSize = ( kernelSize !== undefined ) ? kernelSize : 25;
+	sigma = ( sigma !== undefined ) ? sigma : 4.0;
+	resolution = ( resolution !== undefined ) ? resolution : 256;
+
+	// render targets
+
+	var pars = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat };
+
+	this.renderTargetX = new THREE.WebGLRenderTarget( resolution, resolution, pars );
+	this.renderTargetY = new THREE.WebGLRenderTarget( resolution, resolution, pars );
+
+	// copy material
+
+	if ( THREE.CopyShader === undefined )
+		console.error( "THREE.BloomPass relies on THREE.CopyShader" );
+
+	var copyShader = THREE.CopyShader;
+
+	this.copyUniforms = THREE.UniformsUtils.clone( copyShader.uniforms );
+
+	this.copyUniforms[ "opacity" ].value = strength;
+
+	this.materialCopy = new THREE.ShaderMaterial( {
+
+		uniforms: this.copyUniforms,
+		vertexShader: copyShader.vertexShader,
+		fragmentShader: copyShader.fragmentShader,
+		blending: THREE.AdditiveBlending,
+		transparent: true
+
+	} );
+
+	// convolution material
+
+	if ( THREE.ConvolutionShader === undefined )
+		console.error( "THREE.BloomPass relies on THREE.ConvolutionShader" );
+
+	var convolutionShader = THREE.ConvolutionShader;
+
+	this.convolutionUniforms = THREE.UniformsUtils.clone( convolutionShader.uniforms );
+
+	this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurx;
+	this.convolutionUniforms[ "cKernel" ].value = THREE.ConvolutionShader.buildKernel( sigma );
+
+	this.materialConvolution = new THREE.ShaderMaterial( {
+
+		uniforms: this.convolutionUniforms,
+		vertexShader:  convolutionShader.vertexShader,
+		fragmentShader: convolutionShader.fragmentShader,
+		defines: {
+			"KERNEL_SIZE_FLOAT": kernelSize.toFixed( 1 ),
+			"KERNEL_SIZE_INT": kernelSize.toFixed( 0 )
+		}
+
+	} );
+
+	this.enabled = true;
+	this.needsSwap = false;
+	this.clear = false;
+
+};
+
+THREE.BloomPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta, maskActive ) {
+
+		if ( maskActive ) renderer.context.disable( renderer.context.STENCIL_TEST );
+
+		// Render quad with blured scene into texture (convolution pass 1)
+
+		THREE.EffectComposer.quad.material = this.materialConvolution;
+
+		this.convolutionUniforms[ "tDiffuse" ].value = readBuffer;
+		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurX;
+
+		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, this.renderTargetX, true );
+
+
+		// Render quad with blured scene into texture (convolution pass 2)
+
+		this.convolutionUniforms[ "tDiffuse" ].value = this.renderTargetX;
+		this.convolutionUniforms[ "uImageIncrement" ].value = THREE.BloomPass.blurY;
+
+		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, this.renderTargetY, true );
+
+		// Render original scene with superimposed blur to texture
+
+		THREE.EffectComposer.quad.material = this.materialCopy;
+
+		this.copyUniforms[ "tDiffuse" ].value = this.renderTargetY;
+
+		if ( maskActive ) renderer.context.enable( renderer.context.STENCIL_TEST );
+
+		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, readBuffer, this.clear );
+
+	}
+
+};
+
+THREE.BloomPass.blurX = new THREE.Vector2( 0.001953125, 0.0 );
+THREE.BloomPass.blurY = new THREE.Vector2( 0.0, 0.001953125 );
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.FilmPass = function ( noiseIntensity, scanlinesIntensity, scanlinesCount, grayscale ) {
+
+	if ( THREE.FilmShader === undefined )
+		console.error( "THREE.FilmPass relies on THREE.FilmShader" );
+
+	var shader = THREE.FilmShader;
+
+	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+
+	this.material = new THREE.ShaderMaterial( {
+
+		uniforms: this.uniforms,
+		vertexShader: shader.vertexShader,
+		fragmentShader: shader.fragmentShader
+
+	} );
+
+	if ( grayscale !== undefined )	this.uniforms.grayscale.value = grayscale;
+	if ( noiseIntensity !== undefined ) this.uniforms.nIntensity.value = noiseIntensity;
+	if ( scanlinesIntensity !== undefined ) this.uniforms.sIntensity.value = scanlinesIntensity;
+	if ( scanlinesCount !== undefined ) this.uniforms.sCount.value = scanlinesCount;
+
+	this.enabled = true;
+	this.renderToScreen = false;
+	this.needsSwap = true;
+
+};
+
+THREE.FilmPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		this.uniforms[ "tDiffuse" ].value = readBuffer;
+		this.uniforms[ "time" ].value += delta;
+
+		THREE.EffectComposer.quad.material = this.material;
+
+		if ( this.renderToScreen ) {
+
+			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
+
+		} else {
+
+			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, false );
+
+		}
+
+	}
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.DotScreenPass = function ( center, angle, scale ) {
+
+	if ( THREE.DotScreenShader === undefined )
+		console.error( "THREE.DotScreenPass relies on THREE.DotScreenShader" );
+
+	var shader = THREE.DotScreenShader;
+
+	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+
+	if ( center !== undefined ) this.uniforms[ "center" ].value.copy( center );
+	if ( angle !== undefined ) this.uniforms[ "angle"].value = angle;
+	if ( scale !== undefined ) this.uniforms[ "scale"].value = scale;
+
+	this.material = new THREE.ShaderMaterial( {
+
+		uniforms: this.uniforms,
+		vertexShader: shader.vertexShader,
+		fragmentShader: shader.fragmentShader
+
+	} );
+
+	this.enabled = true;
+	this.renderToScreen = false;
+	this.needsSwap = true;
+
+};
+
+THREE.DotScreenPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		this.uniforms[ "tDiffuse" ].value = readBuffer;
+		this.uniforms[ "tSize" ].value.set( readBuffer.width, readBuffer.height );
+
+		THREE.EffectComposer.quad.material = this.material;
+
+		if ( this.renderToScreen ) {
+
+			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
+
+		} else {
+
+			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, false );
+
+		}
+
+	}
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.TexturePass = function ( texture, opacity ) {
+
+	if ( THREE.CopyShader === undefined )
+		console.error( "THREE.TexturePass relies on THREE.CopyShader" );
+
+	var shader = THREE.CopyShader;
+
+	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+
+	this.uniforms[ "opacity" ].value = ( opacity !== undefined ) ? opacity : 1.0;
+	this.uniforms[ "tDiffuse" ].value = texture;
+
+	this.material = new THREE.ShaderMaterial( {
+
+		uniforms: this.uniforms,
+		vertexShader: shader.vertexShader,
+		fragmentShader: shader.fragmentShader
+
+	} );
+
+	this.enabled = true;
+	this.needsSwap = false;
+
+};
+
+THREE.TexturePass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		THREE.EffectComposer.quad.material = this.material;
+
+		renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, readBuffer );
+
+	}
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.ShaderPass = function ( shader, textureID ) {
+
+	this.textureID = ( textureID !== undefined ) ? textureID : "tDiffuse";
+
+	this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+
+	this.material = new THREE.ShaderMaterial( {
+
+		uniforms: this.uniforms,
+		vertexShader: shader.vertexShader,
+		fragmentShader: shader.fragmentShader
+
+	} );
+
+	this.renderToScreen = false;
+
+	this.enabled = true;
+	this.needsSwap = true;
+	this.clear = false;
+
+};
+
+THREE.ShaderPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		if ( this.uniforms[ this.textureID ] ) {
+
+			this.uniforms[ this.textureID ].value = readBuffer;
+
+		}
+
+		THREE.EffectComposer.quad.material = this.material;
+
+		if ( this.renderToScreen ) {
+
+			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera );
+
+		} else {
+
+			renderer.render( THREE.EffectComposer.scene, THREE.EffectComposer.camera, writeBuffer, this.clear );
+
+		}
+
+	}
+
+};
+;/**
+ * @author alteredq / http://alteredqualia.com/
+ */
+
+THREE.MaskPass = function ( scene, camera ) {
+
+	this.scene = scene;
+	this.camera = camera;
+
+	this.enabled = true;
+	this.clear = true;
+	this.needsSwap = false;
+
+	this.inverse = false;
+
+};
+
+THREE.MaskPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		var context = renderer.context;
+
+		// don't update color or depth
+
+		context.colorMask( false, false, false, false );
+		context.depthMask( false );
+
+		// set up stencil
+
+		var writeValue, clearValue;
+
+		if ( this.inverse ) {
+
+			writeValue = 0;
+			clearValue = 1;
+
+		} else {
+
+			writeValue = 1;
+			clearValue = 0;
+
+		}
+
+		context.enable( context.STENCIL_TEST );
+		context.stencilOp( context.REPLACE, context.REPLACE, context.REPLACE );
+		context.stencilFunc( context.ALWAYS, writeValue, 0xffffffff );
+		context.clearStencil( clearValue );
+
+		// draw into the stencil buffer
+
+		renderer.render( this.scene, this.camera, readBuffer, this.clear );
+		renderer.render( this.scene, this.camera, writeBuffer, this.clear );
+
+		// re-enable update of color and depth
+
+		context.colorMask( true, true, true, true );
+		context.depthMask( true );
+
+		// only render where stencil is set to 1
+
+		context.stencilFunc( context.EQUAL, 1, 0xffffffff );  // draw if == 1
+		context.stencilOp( context.KEEP, context.KEEP, context.KEEP );
+
+	}
+
+};
+
+
+THREE.ClearMaskPass = function () {
+
+	this.enabled = true;
+
+};
+
+THREE.ClearMaskPass.prototype = {
+
+	render: function ( renderer, writeBuffer, readBuffer, delta ) {
+
+		var context = renderer.context;
+
+		context.disable( context.STENCIL_TEST );
+
+	}
+
+};
+;var Resize = function() {
+    this.screenWidth = window.innerWidth;
+    this.screenHeight = window.innerHeight;
+    this.halfScreenWidth = this.screenWidth >> 1;
+    this.halfScreenHeight = this.screenHeight >> 1;
+
+    // A list of elements to resize
+    this.resizables = [];
+
+    // window.addEventListener('resize', this.onResize.bind(this));
+};
+
+Resize.prototype = {
+    enableSmoothing: function(context, value) {
+        a = value || false;
+
+        context.webkitImageSmoothingEnabled = value;
+        context.mozImageSmoothingEnabled = value;
+        context.imageSmoothingEnabled = value;
+    },
+
+    onResize: function() {
+        this.screenWidth = window.innerWidth;
+        this.screenHeight = window.innerHeight;
+        this.halfScreenWidth = this.screenWidth >> 1;
+        this.halfScreenHeight = this.screenHeight >> 1;
+
+        // Resize supplied elements
+        // for(var i = 0; i < this.resizables.length; i++) {
+        //     this.resizables[i].width = this.screenWidth;
+        //     this.resizables[i].height = this.screenHeight;
+        // }
     }
- 
-    if (!window.requestAnimationFrame)
-        window.requestAnimationFrame = function(callback, element) {
-            var currTime = new Date().getTime();
-            var timeToCall = Math.max(0, 16 - (currTime - lastTime));
-            var id = window.setTimeout(function() { callback(currTime + timeToCall); }, 
-              timeToCall);
-            lastTime = currTime + timeToCall;
-            return id;
+};;var MathHelper = {
+    rand: function(min, max) {
+        return Math.random() * (max - min) + min;
+    },
+
+    randInt: function(min, max) {
+        return ~~(Math.random() * (max - min) + min);
+    },
+
+    max: function(a, b) {
+        if(a < b) return b;
+        else return a;
+    },
+
+    dist: function(x1, y1, x2, y2) {
+        return Math.sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)));
+    },
+
+    pDist: function(p1, p2) {
+        return this.dist(p1.x, p1.y, p2.x, p2.y);
+    },
+
+    radToDeg: function(radians) {
+        return radians / (Math.PI / 180);
+    },
+
+    degToRad: function(degrees) {
+        return degrees * (Math.PI / 180);
+    },
+
+    hypotenuse: function(a, b) {
+        return Math.sqrt(a * a + b * b);
+    },
+
+    angle: function(x1, y1, x2, y2) {
+        var dx = x2 - x1,
+        dy = y2 - y1;
+        return dx < 0 ? Math.atan(dy / dx) : Math.PI + Math.atan(dy / dx);
+    },
+
+    pAngle: function(p1, p2) {
+        return this.angle(p1.x, p1.y, p2.x, p2.y);
+    },
+
+};;var LeapBridge = function(fingersNumber, handsNumber, x, y, fingerRadius) {
+
+    this.isLeap = false;
+    this.FINGER_RADIUS = fingerRadius || 10;
+    this.fingersNumber = fingersNumber || 10;
+    this.handsNumber = handsNumber || 2;
+    x = x || 1;
+    y = y || 1;
+
+    this.fingers = [];
+    for(var i = 0; i < this.fingersNumber; i++) {
+        this.fingers[i] = {
+            x: x,
+            y: y,
+            z: x / y,
+            ox: x,
+            oy: y,
+            oz: x / y
         };
- 
-    if (!window.cancelAnimationFrame)
-        window.cancelAnimationFrame = function(id) {
-            clearTimeout(id);
+    }
+
+    this.hands = [];
+    for(i = 0; i < this.handsNumber; i++) {
+        this.hands[i] = {
+            x: x,
+            y: y,
+            z: x / y,
+            ox: x,
+            oy: y,
+            oz: x / y,
+            sphereCenter: [],
+            sphereRadius: 0,
+            valid: false
         };
-}());
+    }
+
+    if(Leap) {
+        // Leap detection
+        var controller = new Leap.Controller();
+        controller.on('connect', this.onLeapDeviceConnect.bind(this));
+        controller.on('deviceConnected', this.onLeapDeviceConnected.bind(this));
+        controller.on('deviceDisconnected', this.onLeapDeviceDisconnect.bind(this));
+        controller.connect();
+    }
+};
+
+LeapBridge.prototype =  {
+    onLeapDeviceConnect: function() {
+        console.log('[LeapBridge] onConnect');
+        Leap.loop(this.listen.bind(this));
+    },
+
+    onLeapDeviceConnected: function() {
+        console.log('[LeapBridge] KOUKOU');
+    },
+
+    onLeapDeviceDisconnect: function() {
+        console.log('[LeapBridge] onLeapDeviceDisconnect');
+        this.isLeap = false;
+    },
+
+    listen: function(event) {
+        // console.log(event.valid);
+        this.isLeap = true;
+
+        var finger, lastFinger, tipPosition;
+        for(var i = 0; i < this.fingersNumber; i++) {
+            finger = event.fingers[i];
+            lastFinger = event.controller.lastFrame.fingers[i];
+
+            // Writes up to 10 fingers to sketch.touches.
+            if(finger && finger.valid) {
+                tipPosition = finger.stabilizedTipPosition;
+                this.fingers[i].x = tipPosition[0] - this.FINGER_RADIUS;
+                this.fingers[i].y = -(tipPosition[1] - this.FINGER_RADIUS); // Y axis is inverted
+                this.fingers[i].z = tipPosition[2] - this.FINGER_RADIUS;
+            }
+            // Uses Leap.Controller.lastFrame to also write old and delta coordinates.
+            if(lastFinger && lastFinger.valid) {
+                this.fingers[i].ox = lastFinger.tipPosition[0];
+                this.fingers[i].oy = lastFinger.tipPosition[1];
+                this.fingers[i].oz = lastFinger.tipPosition[2];
+
+                // this.dx = this.ox - this.x;
+                // this.dy = this.oy - this.y;
+                // this.dz = this.oz - this.z;
+            }
+        }
+
+        var hand;
+        for(i = 0; i < this.handsNumber; i++) {
+            hand = event.hands[i];
+            if(!hand) {
+                this.hands[i].valid = false;
+                return;
+            }
+
+            this.hands[i].x = hand.stabilizedPalmPosition[0];
+            this.hands[i].y = hand.stabilizedPalmPosition[1];
+            this.hands[i].z = hand.stabilizedPalmPosition[2];
+            this.hands[i].sphereCenter = hand.sphereCenter;
+            this.hands[i].sphereRadius = hand.sphereRadius;
+            this.hands[i].valid = true;
+        }
+    }
+};;var Mouse = function(x, y) {
+    this.x = x;
+    this.y = y;
+
+    this.ox = x;
+    this.oy = y;
+
+    this.isDown = false;
+
+    window.addEventListener("mousemove", this.onMouseMove.bind(this));
+    window.addEventListener("mousedown", this.onMouseDown.bind(this));
+    window.addEventListener("mouseup", this.onMouseUp.bind(this));
+};
+
+Mouse.prototype = {
+    onMouseMove: function(e) {
+        this.ox = this.x;
+        this.oy = this.y;
+        this.x = e.clientX;
+        this.y = e.clientY;
+    },
+
+    onMouseUp: function(e) {
+        this.isDown = false;
+    },
+
+    onMouseDown: function(e) {
+        this.isDown = true;
+    }
+};;var Constants = {
+    showMesh: true,
+    showLines: false,
+    cameraPosition: {
+        x: 0,
+        y: 6,
+        z: 0
+    },
+    cameraRotation: {
+        x: 0,
+        y: 0,
+        z: 0
+    },
+    frontLightPosition: {
+        x: 390,
+        y: -140,
+        z: -380
+    },
+    midLightPosition: {
+        x: -1000,
+        y: 60,
+        z: -1700
+    },
+    backLightPosition: {
+        x: -730,
+        y: 60,
+        z: -6500
+    },
+    backgroundPosition: {
+        x: -600,
+        y: 200,
+        z: -9000
+    },
+    leapLightHelperPosition: {
+        x: 0,
+        y: 100,
+        z: -2500
+    },
+    lightIntensity: {
+        back: 10,
+        mid: 10,
+        front: 10,
+        leap: 3
+    }
+};
+;var Constants = Constants || {};
+
+var Playground = function()
+{
+    this.isDebug = false;
+    if(this.isDebug)
+    {
+        this.debug();
+    }
+
+    // Kick it !
+    this.init();
+    this.initGui();
+};
+
+Playground.prototype = {
+    init: function()
+    {
+        this.initSounds();
+        this.initRenderer();
+        this.initMeshes();
+        this.initLights();
+    },
+
+    initSounds: function() {
+        this.switchSound = new Howl({
+          urls: ['assets/sounds/door.mp3'],
+          autoplay: false,
+          volume: 0.3
+        });
+        this.ambiant = new Howl({
+            urls: ['assets/sounds/ambiant.mp3'],
+            autoplay: true,
+            loop: true
+        });
+    },
+
+    initRenderer: function() {
+        this.resize = new Resize();
+        this.renderer = new THREE.WebGLRenderer({antialias: true});
+        this.camera = new THREE.PerspectiveCamera(30, this.resize.screenWidth / this.resize.screenHeight, 100, 10000);
+        this.scene = new THREE.Scene();
+
+        this.leap = new LeapBridge();
+        this.mouse = new Mouse();
+
+        this.scene.add(this.camera);
+        this.camera.position = Constants.cameraPosition;
+
+        this.renderer.setSize(this.resize.screenWidth, this.resize.screenHeight);
+        document.body.appendChild(this.renderer.domElement);
+
+        var rtParams = {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBFormat,
+            stencilBuffer: true
+        };
+
+        // Render pass
+        this.renderPass = new THREE.RenderPass(this.scene, this.camera);
+
+        // Noise pass
+        this.filmPass   = new THREE.FilmPass( 0.02, 0, 0, false);
+
+        // Effect Composer
+        this.composer   = new THREE.EffectComposer( this.renderer, new THREE.WebGLRenderTarget( window.innerWidth, window.innerWidth, rtParams ) );
+        this.composer.addPass(this.renderPass);
+        this.composer.addPass(this.filmPass);
+
+        this.filmPass.renderToScreen = true;
+    },
+
+    initMeshes: function() {
+        // Background
+        // this.background = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshBasicMaterial({color: 0xE65F39})); // MeshBasicMaterial to make it really visible
+        this.movingPlane = new THREE.Mesh(new THREE.PlaneGeometry(16000, 10000), new THREE.MeshLambertMaterial({color: 0xE65F39}));
+        // this.scene.add(this.background);
+        this.scene.add(this.movingPlane);
+        // this.background.position.set(Constants.backgroundPosition.x, Constants.backgroundPosition.y, Constants.backgroundPosition.z)
+        this.movingPlane.position = Constants.backgroundPosition;
+
+        var loader = new THREE.OBJLoader();
+        loader.load('assets/models/model_clean.obj', function (object) {
+            this.mesh = object.children[0];
+            this.lines = object.clone().children[0];
+            this.scene.add(this.mesh);
+            // this.scene.add(this.lines);
+            this.mesh.material.transparent = true;
+            this.lines.material = new THREE.MeshLambertMaterial({color: 0xFFFF00, wireframe: true, wireframeLinewidth: 4});
+
+            // Backup vertices positions
+            this.verticesPositions = [];
+
+            var vertices = this.mesh.geometry.vertices;
+            for(var i = 0; i < vertices.length; i++) {
+                this.verticesPositions.push(vertices[i].z);
+            }
+
+            this.mesh.geometry.dynamic = true;
+            this.mesh.geometry.mergeVertices();
+
+            this.render();
+            this.movePlane();
+        }.bind(this));
+    },
+
+    movePlane: function() {
+        TweenLite.fromTo(this.movingPlane.position, 6, {z: -200}, {z: -9000, delay: 1.2});
+        TweenLite.fromTo(this.bgLight.position, 6, {z: -150}, {z: -9000 + 50, delay: 1.2});
+    },
+
+    initLights: function() {
+        this.ambientLight = new THREE.AmbientLight(0x1E1E1E);
+        this.scene.add(this.ambientLight);
+
+        this.bgLight = new THREE.PointLight(0xE65F39, 120, 1000);
+        // this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
+        this.scene.add(this.bgLight);
+
+        this.frontLight = new THREE.PointLight(0xCC1834, Constants.lightIntensity.front, 1000);
+        this.frontLight.position = Constants.frontLightPosition;
+        this.scene.add(this.frontLight);
+        this.frontLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xCC1834}));
+        this.frontLightHelper.position = this.frontLight.position;
+        // this.scene.add(this.frontLightHelper);
+
+        this.midLight = new THREE.PointLight(0x3418CC, Constants.lightIntensity.mid, 1000);
+        this.midLight.position = Constants.midLightPosition;
+        this.scene.add(this.midLight);
+        this.midLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0x3418CC}));
+        this.midLightHelper.position = this.midLight.position;
+        // this.scene.add(this.midLightHelper);
+
+        this.backLight = new THREE.PointLight(0xFF8800, Constants.lightIntensity.back, 1000);
+        this.backLight.position = Constants.backLightPosition;
+        this.scene.add(this.backLight);
+        this.backLightHelper = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
+        this.backLightHelper.position = this.backLight.position;
+        // this.scene.add(this.backLightHelper);
+
+        this.leapLight = new THREE.PointLight(0x0080FF, Constants.lightIntensity.leap, 1000);
+        this.scene.add(this.leapLight);
+
+        this.leapLightHelper = new THREE.Object3D();
+        this.scene.add(this.leapLightHelper);
+        var leapCube1 = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
+        var leapCube2 = new THREE.Mesh(new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xFF8800}));
+        leapCube2.rotation.x = Math.cos(10);
+        leapCube2.rotation.y = Math.sin(10);
+        this.leapLightHelper.add(leapCube1);
+        this.leapLightHelper.add(leapCube2);
+        this.leapLightHelper.position = this.leapLight.position;
+        this.scene.add(this.leapLightHelper);
+
+        // Living light
+        var self = this;
+        this.lightController = {
+            origin: null,
+            lights: [],
+            drawObject: null,
+
+            initWithLights: function(number){
+                this.drawObject = new THREE.Object3D();
+                this.origin = new THREE.Vector3(0, 0, -500);
+
+
+                for (var i = 0; i < number; i++) {
+                    var light    = new THREE.PointLight(0xFF8800, 10, 500);
+                    light.helper = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), new THREE.MeshBasicMaterial({color: 0xFF8800}));
+                    light.helper.receiveShadow = false;
+                    light.helper.castShadow = false;
+                    light.glow   = this.glow();
+                    light.delta  = new THREE.Vector3();
+                    light.startAngle = Math.random() * Math.PI * 2;
+
+                    light.randomSpeed = function(){
+                        light.speed = new THREE.Vector3(
+                            Math.random()*0.1,
+                            Math.random()*0.1,
+                            Math.random()*0.1
+                        );
+                    };
+
+                    light.randomSpeed();
+                    setInterval(function(){
+                        light.randomSpeed();
+                    }.bind(light), 3000);
+
+                    this.lights.push(light);
+
+                    this.drawObject.add(light);
+                    this.drawObject.add(light.helper);
+                    this.drawObject.add(light.glow);
+                }
+            },
+
+            glow: function() {
+                var shader = THREE.GlowShader(self.camera.position, new THREE.Color(0xFF8800));
+                var glow = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), shader.clone());
+                glow.scale.multiplyScalar(1.5);
+                glow.receiveShadow = false;
+                glow.castShadow = false;
+                return glow;
+            },
+
+            update: function(){
+
+                var PI2 = Math.PI * 2;
+                var radius = 500;
+
+                for (var i = 0; i < this.lights.length; i++) {
+                    this.lights[i].delta.add(this.lights[i].speed);
+
+                    var position = new THREE.Vector3(
+                        this.origin.x + Math.cos(this.lights[i].delta.x + this.lights[i].startAngle) * radius + 25,
+                        this.origin.y + Math.sin(this.lights[i].delta.y + this.lights[i].startAngle) * radius *.5,
+                        this.origin.y + Math.sin(this.lights[i].delta.z + this.lights[i].startAngle) * radius + 25
+                    );
+
+                    this.lights[i].position        = position;
+                    this.lights[i].helper.position = position;
+                    this.lights[i].glow.position = position;
+                }
+            },
+        };
+
+        this.lightController.initWithLights(2);
+        this.scene.add(this.lightController.drawObject);
+
+        // Light fading control
+        this.lightsOn = true;
+        this.fading = false;
+        this.fadeLightsOut(0);
+    },
+
+    customRender: function() {
+        var time = Date.now() * 0.001;
+
+        // Animate the leap hand position
+        this.leapLightHelper.rotation.x += Math.cos(time) / 10;
+        this.leapLightHelper.rotation.y += Math.sin(time) / 10;
+
+        if(this.leap.isLeap) {
+            var hand1 = this.leap.hands[0],
+                hand2 = this.leap.hands[1];
+
+            this.leapLight.position.set(hand1.x, hand1.y, -2500 + hand1.z * 10);
+
+            // Turn the light off if no hand
+            if(!hand1.valid) {
+                this.fadeLightsOut();
+            }
+            else {
+                this.fadeLightsIn();
+            }
+
+            // Shake based on the distance between 2 hands
+            if(hand1.valid && hand2.valid) {
+                var dx = Math.abs(hand1.x - hand2.x) / 500;
+                this.shake(time, 100 * (1 - dx));
+            }
+            else {
+                this.resetShake();
+            }
+        }
+        else {
+            this.fadeLightsIn(0);
+            var mx = this.mouse.x / this.resize.screenWidth * 1900 - 1000;
+            this.leapLightHelper.position.set(mx, 100, this.mouse.y / this.resize.screenHeight * 1500 - 2000);
+            if(this.mouse.isDown) {
+                this.shake(time, 120);
+            }
+        }
+    },
+
+    shake: function(time, force) {
+        if(force > 110) {
+            // this.filmPass.uniforms.grayscale.value = !!~~(Math.random() * 2); // Random boolean
+            this.filmPass.uniforms.nIntensity.value = Math.random();
+            this.filmPass.uniforms.sIntensity.value = Math.random();
+            this.filmPass.uniforms.sCount.value = Math.random();
+        }
+        var vertices = this.mesh.geometry.vertices;
+        for(var i = 0; i < vertices.length; i++) {
+            vertices[i].z = this.verticesPositions[i] + Math.random() * force;
+        }
+        this.mesh.geometry.verticesNeedUpdate = true;
+        this.mesh.geometry.computeFaceNormals();
+    },
+
+    resetShake: function() {
+        this.filmPass.uniforms.grayscale.value = false;
+        this.filmPass.uniforms.nIntensity.value = 1;
+        this.filmPass.uniforms.sIntensity.value = 0;
+        this.filmPass.uniforms.sCount.value = 0;
+
+        var vertices = this.mesh.geometry.vertices;
+        for(var i = 0; i < vertices.length; i++) {
+            TweenLite.to(vertices[i], 0.4, {z: this.verticesPositions[i]});
+        }
+        this.mesh.geometry.verticesNeedUpdate = true;
+        this.mesh.geometry.computeFaceNormals();
+    },
+
+    fadeLightsIn: function(time) {
+        if(this.fading || this.lightsOn) return;
+        // console.log('fadeLightsIn');
+        this.switchSound.play();
+        time = time || 0.5;
+        this.fading = true;
+        TweenLite.to(this.leapLight, time, {intensity: Constants.lightIntensity.leap, ease: Expo.easeIn});
+        TweenLite.to(this.midLight, time, {intensity: Constants.lightIntensity.mid, ease: Expo.easeIn});
+        TweenLite.to(this.backLight, time, {intensity: Constants.lightIntensity.back, ease: Expo.easeIn});
+        TweenLite.to(this.frontLight, time, {intensity: Constants.lightIntensity.front,
+            onComplete: function() {
+                this.fading = false;
+                this.lightsOn = true;
+            }.bind(this)
+        , ease: Expo.easeIn});
+    },
+
+    fadeLightsOut: function(time) {
+        if(this.fading || !this.lightsOn) return;
+        // console.log('fadeLightsOut');
+        this.switchSound.play();
+        time = time || 0.5;
+        this.fading = true;
+        TweenLite.to(this.leapLight, time, {intensity: 0, ease: Expo.easeOut});
+        TweenLite.to(this.midLight, time, {intensity: 0, ease: Expo.easeOut});
+        TweenLite.to(this.backLight, time, {intensity: 0, ease: Expo.easeOut});
+        TweenLite.to(this.frontLight, time, {intensity: 0,
+            onComplete: function() {
+                    this.fading = false;
+                    this.lightsOn = false;
+            }.bind(this)
+        , ease: Expo.easeOut});
+    },
+
+    render: function()
+    {
+        if(this.isDebug)
+        {
+            this.stats.update();
+        }
+
+        this.customRender();
+
+        this.composer.render(0.01);
+        this.lightController.update();
+        // this.renderer.render(this.scene, this.camera);
+        // this.renderer.clear();
+        // this.composer.render();
+
+
+        setTimeout(function(){
+            window.requestAnimationFrame(this.render.bind(this));
+        }.bind(this), 1000 / 30);
+        // requestAnimationFrame(this.render.bind(this));
+    },
+
+    debug: function() {
+        this.stats = new Stats();
+        this.stats.domElement.style.position = 'absolute';
+        this.stats.domElement.style.left = '0px';
+        this.stats.domElement.style.top = '0px';
+        this.stats.domElement.style.zIndex = '100';
+        document.body.appendChild(this.stats.domElement);
+    },
+
+    initGui: function() {
+        this.gui = new dat.GUI();
+
+        this.gui.add(Constants, 'showMesh').onChange(function() {
+            this.scene.remove(this.mesh);
+            if(Constants.showMesh) {
+                this.scene.add(this.mesh);
+            }
+        }.bind(this));
+
+        this.gui.add(Constants, 'showLines').onChange(function() {
+            this.scene.remove(this.lines);
+            if(Constants.showLines) {
+                this.scene.add(this.lines);
+            }
+        }.bind(this));
+
+        var cameraPosition = this.gui.addFolder('cameraPosition');
+        cameraPosition.add(Constants.cameraPosition, 'x').min(-2000).max(2000);
+        cameraPosition.add(Constants.cameraPosition, 'y').min(-2000).max(2000);
+        cameraPosition.add(Constants.cameraPosition, 'z').min(-2000).max(2000);
+
+        var frontLight = this.gui.addFolder('frontLightPosition');
+        frontLight.add(Constants.frontLightPosition, 'x').min(-1000).max(1000);
+        frontLight.add(Constants.frontLightPosition, 'y').min(-1000).max(5000);
+        frontLight.add(Constants.frontLightPosition, 'z').min(-1000).max(1000);
+
+        var midLight = this.gui.addFolder('midLightPosition');
+        midLight.add(Constants.midLightPosition, 'x').min(-1000).max(1000);
+        midLight.add(Constants.midLightPosition, 'y').min(-1000).max(5000);
+        midLight.add(Constants.midLightPosition, 'z').min(-6000).max(0);
+
+        var backLight = this.gui.addFolder('backLightPosition');
+        backLight.add(Constants.backLightPosition, 'x').min(-1000).max(1000);
+        backLight.add(Constants.backLightPosition, 'y').min(-1000).max(5000);
+        backLight.add(Constants.backLightPosition, 'z').min(-20000).max(0);
+
+        var leapLightHelper = this.gui.addFolder('leapHelper');
+        leapLightHelper.add(Constants.leapLightHelperPosition, 'x').min(-1000).max(1000).onChange(function() {
+            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
+        }.bind(this));
+        leapLightHelper.add(Constants.leapLightHelperPosition, 'y').min(-1000).max(1000).onChange(function() {
+            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
+        }.bind(this));
+        leapLightHelper.add(Constants.leapLightHelperPosition, 'z').min(-10000).max(1000).onChange(function() {
+            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
+        }.bind(this));
+
+        this.gui.close();
+    }
+};
+;window.onload = function() {
+    var playground = new Playground();
+};
