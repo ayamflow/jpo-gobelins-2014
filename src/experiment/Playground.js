@@ -33,12 +33,12 @@ Playground.prototype = {
             autoplay: true,
             loop: true
         });
-        this.sapien = new Howl({
+        /*this.sapien = new Howl({
             urls: ['assets/sounds/sapien.mp3'],
             autoplay: true,
             loop: true,
             volume: 0.6
-        });
+        });*/
     },
 
     initRenderer: function() {
@@ -48,6 +48,7 @@ Playground.prototype = {
         this.scene = new THREE.Scene();
 
         this.leap = new LeapBridge();
+        this.mouse = new Mouse();
 
         this.scene.add(this.camera);
         this.camera.position = Constants.cameraPosition;
@@ -55,7 +56,6 @@ Playground.prototype = {
         this.renderer.setSize(this.resize.screenWidth, this.resize.screenHeight);
         document.body.appendChild(this.renderer.domElement);
 
-        ////
         var rtParams = {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
@@ -93,7 +93,7 @@ Playground.prototype = {
             this.scene.add(this.mesh);
             // this.scene.add(this.lines);
             this.mesh.material.transparent = true;
-            this.lines.material = new THREE.MeshLambertMaterial({color: 0x0000FF, wireframe: true, wireframeLinewidth: 4});
+            this.lines.material = new THREE.MeshLambertMaterial({color: 0xFFFF00, wireframe: true, wireframeLinewidth: 4});
 
             // Backup vertices positions
             this.verticesPositions = [];
@@ -246,29 +246,40 @@ Playground.prototype = {
     customRender: function() {
         var time = Date.now() * 0.001;
 
-        var hand1 = this.leap.hands[0],
-            hand2 = this.leap.hands[1];
-
         // Animate the leap hand position
         this.leapLightHelper.rotation.x += Math.cos(time) / 10;
         this.leapLightHelper.rotation.y += Math.sin(time) / 10;
-        this.leapLight.position.set(hand1.x, hand1.y, -2500 + hand1.z * 10);
 
-        // Turn the light off if no hand
-        if(!hand1.valid) {
-            this.fadeLightsOut();
+        if(this.leap.isLeap) {
+            var hand1 = this.leap.hands[0],
+                hand2 = this.leap.hands[1];
+
+            this.leapLight.position.set(hand1.x, hand1.y, -2500 + hand1.z * 10);
+
+            // Turn the light off if no hand
+            if(!hand1.valid) {
+                this.fadeLightsOut();
+            }
+            else {
+                this.fadeLightsIn();
+            }
+
+            // Shake based on the distance between 2 hands
+            if(hand1.valid && hand2.valid) {
+                var dx = Math.abs(hand1.x - hand2.x) / 500;
+                this.shake(time, 100 * (1 - dx));
+            }
+            else {
+                this.resetShake();
+            }
         }
         else {
-            this.fadeLightsIn();
-        }
-
-        // Shake based on the distance between 2 hands
-        if(hand1.valid && hand2.valid) {
-            var dx = Math.abs(hand1.x - hand2.x) / 500;
-            this.shake(time, 100 * (1 - dx));
-        }
-        else {
-            this.resetShake();
+            this.fadeLightsIn(0);
+            var mx = this.mouse.x / this.resize.screenWidth * 1900 - 1000;
+            this.leapLightHelper.position.set(mx, 100, this.mouse.y / this.resize.screenHeight * 1500 - 2000);
+            if(this.mouse.isDown) {
+                this.shake(time, 120);
+            }
         }
     },
 
@@ -388,11 +399,6 @@ Playground.prototype = {
         cameraPosition.add(Constants.cameraPosition, 'y').min(-2000).max(2000);
         cameraPosition.add(Constants.cameraPosition, 'z').min(-2000).max(2000);
 
-        var cameraRotation = this.gui.addFolder('cameraRotation');
-        cameraRotation.add(Constants.cameraRotation, 'x').min(-Math.PI).max(Math.PI).step(Math.PI / 20);
-        cameraRotation.add(Constants.cameraRotation, 'y').min(-Math.PI).max(Math.PI).step(Math.PI / 20);
-        cameraRotation.add(Constants.cameraRotation, 'z').min(-Math.PI).max(Math.PI).step(Math.PI / 20);
-
         var frontLight = this.gui.addFolder('frontLightPosition');
         frontLight.add(Constants.frontLightPosition, 'x').min(-1000).max(1000);
         frontLight.add(Constants.frontLightPosition, 'y').min(-1000).max(5000);
@@ -408,15 +414,17 @@ Playground.prototype = {
         backLight.add(Constants.backLightPosition, 'y').min(-1000).max(5000);
         backLight.add(Constants.backLightPosition, 'z').min(-20000).max(0);
 
-        var background = this.gui.addFolder('bgPosition');
-        background.add(Constants.backgroundPosition, 'x').min(-1000).max(1000).onChange(function() {
-            this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
+        var leapLightHelper = this.gui.addFolder('leapHelper');
+        leapLightHelper.add(Constants.leapLightHelperPosition, 'x').min(-1000).max(1000).onChange(function() {
+            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
         }.bind(this));
-        background.add(Constants.backgroundPosition, 'y').min(-1000).max(1000).onChange(function() {
-            this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
+        leapLightHelper.add(Constants.leapLightHelperPosition, 'y').min(-1000).max(1000).onChange(function() {
+            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
         }.bind(this));
-        background.add(Constants.backgroundPosition, 'z').min(-10000).max(1000).onChange(function() {
-            this.bgLight.position.set(this.background.position.x, this.background.position.y + 500, this.background.position.z + 50);
+        leapLightHelper.add(Constants.leapLightHelperPosition, 'z').min(-10000).max(1000).onChange(function() {
+            this.leapLightHelper.position.set(Constants.leapLightHelperPosition.x, Constants.leapLightHelperPosition.y, Constants.leapLightHelperPosition.z);
         }.bind(this));
+
+        this.gui.close();
     }
 };

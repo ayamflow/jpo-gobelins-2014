@@ -31,10 +31,15 @@ var Constants = {
         y: 200,
         z: -9000
     },
+    leapLightHelperPosition: {
+        x: 0,
+        y: 100,
+        z: -2500
+    },
     lightIntensity: {
         back: 10,
         mid: 10,
         front: 10,
-        leap: 10
+        leap: 3
     }
 };

@@ -36,7 +36,8 @@ var LeapBridge = function(fingersNumber, handsNumber, x, y, fingerRadius) {
 
     // Leap detection
     var controller = new Leap.Controller();
-    controller.on('connect', this.onLeapDeviceConnect.bind(this));
+    // controller.on('connect', this.onLeapDeviceConnect.bind(this));
+    controller.on('deviceConnected', this.onLeapDeviceConnect.bind(this));
     controller.on('deviceDisconnected', this.onLeapDeviceDisconnect.bind(this));
     controller.connect();
 };

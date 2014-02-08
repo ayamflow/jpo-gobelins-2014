@@ -9,10 +9,21 @@ module.exports = function(grunt) {
                     keepalive: true
                 }
             }
+        },
+        concat: {
+            options: {
+            separator: ';',
+            },
+            dist: {
+                src: ['src/**/*.js', 'lib/**/*.js'],
+                dest: 'dist/jpo2014.js',
+            }
         }
     });
 
+    grunt.loadNpmTasks('grunt-contrib-concat');
     grunt.loadNpmTasks('grunt-contrib-connect');
 
     grunt.registerTask('default', ['connect']);
+    grunt.registerTask('build', ['concat']);
 };
